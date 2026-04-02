@@ -81,3 +81,7 @@ A feature-rich generator tool capable of creating dynamic and sequential standar
 ---
 
 **Note**: The repository also comes built-in with essential legal routing elements such as the **Privacy Policy** and **Terms of Service** pages.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

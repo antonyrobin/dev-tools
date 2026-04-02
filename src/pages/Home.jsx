@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Code, Zap, FileJson, Cpu, QrCode, ShieldCheck, ArrowRight, AlignJustify } from 'lucide-react';
+import { Turnstile } from '@marsidev/react-turnstile';
 import usePageTitle from '../hooks/usePageTitle';
 import './Home.css';
 
@@ -112,7 +113,9 @@ const Home = () => {
             <h3>Enterprise Grade Security</h3>
             <p className="mb-0">Protected by Cloudflare Turnstile bot management. Advanced privacy checks embedded.</p>
           </div>
-          <ShieldCheck size={48} className="text-success opacity-50" />
+          <div className="turnstile-container">
+            <Turnstile siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'} />
+          </div>
         </div>
       </section>
     </div>
