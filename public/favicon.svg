@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <!-- Vibrant Gradient -->
+    <linearGradient id="tools-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+    
+    <!-- Accent Gradient -->
+    <linearGradient id="tools-accent" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+
+    <!-- Outer Glow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Layer base -->
+  <rect x="10" y="10" width="100" height="100" rx="24" fill="#13141c" stroke="url(#tools-grad)" stroke-width="4" filter="url(#glow)"/>
+  
+  <!-- Abstract Code Bracket Left -->
+  <path d="M 45 35 L 25 60 L 45 85" fill="none" stroke="url(#tools-grad)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Abstract Code Bracket Right -->
+  <path d="M 75 35 L 95 60 L 75 85" fill="none" stroke="url(#tools-accent)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Middle Slash -->
+  <path d="M 68 30 L 52 90" fill="none" stroke="#f8fafc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Center Decorative Sparkle (representing the AI/Tools side) -->
+  <circle cx="60" cy="25" r="4" fill="#10b981" />
+</svg>
