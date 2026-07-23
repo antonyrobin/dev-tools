@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
+import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Cpu, Play, Trash2 } from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
 
@@ -10,7 +11,6 @@ const CodeCompiler = () => {
 
   const runCode = () => {
     try {
-      // Create a safely isolated output collector
       const logs = [];
       const originalLog = console.log;
       
@@ -18,12 +18,10 @@ const CodeCompiler = () => {
         logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
       };
 
-      // Evaluate the code securely (mock compiling)
       // eslint-disable-next-line no-new-func
       const func = new Function(code);
       func();
 
-      // Restore console.log
       console.log = originalLog;
       
       setOutput(logs.join('\n') || 'Execution complete with no output.');
@@ -43,24 +41,31 @@ const CodeCompiler = () => {
 
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
         {/* Editor */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="code-editor-container flex flex-col">
           <div className="code-editor-header">
             <span className="font-mono text-sm text-muted">Input (JS)</span>
-            <button className="btn btn-primary btn-sm" onClick={runCode} style={{ padding: '0.4rem 1rem' }}>
-              <Play size={16} /> Run
-            </button>
+            <div className="flex gap-2">
+              <UploadButton 
+                label="Upload"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
+                onFileLoaded={(res) => setCode(res.content)}
+              />
+              <button className="btn btn-primary btn-sm" onClick={runCode} style={{ padding: '0.4rem 1rem' }}>
+                <Play size={16} /> Run
+              </button>
+            </div>
           </div>
-          <textarea
-            className="code-textarea"
+          <CodeDropzoneTextarea
             value={code}
-            onChange={(e) => setCode(e.target.value)}
-            spellCheck="false"
-            style={{ flex: 1, minHeight: '65vh', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}
+            onChange={(val) => setCode(val)}
+            placeholder="Paste or drag & drop JS code file..."
+            style={{ flex: 1, minHeight: '65vh' }}
           />
         </div>
 
-        {/* Output */}
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
+        {/* Output Terminal */}
+        <div className="code-editor-container flex flex-col" style={{ background: 'var(--bg-primary)' }}>
           <div className="code-editor-header">
             <span className="font-mono text-sm text-muted">Output Terminal</span>
             <button className="btn btn-ghost btn-sm" onClick={() => setOutput('')} style={{ padding: '0.4rem 1rem' }}>

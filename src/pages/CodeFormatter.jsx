@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ToolHeader from '../components/ToolHeader';
+import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { FileJson, Play, Copy, Check, Maximize2, X, RotateCcw, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
@@ -421,6 +422,16 @@ const CodeFormatter = () => {
           </div>
 
           <div className="flex gap-3">
+            <UploadButton 
+              label="Upload File"
+              className="btn btn-outline"
+              onFileLoaded={(res) => {
+                setInputCode(res.content);
+                if (res.detectedLanguage) {
+                  setLanguage(res.detectedLanguage);
+                }
+              }}
+            />
             <button className="btn btn-outline" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
               {copied ? <Check size={18} className="text-success" /> : <Copy size={18} />}
               {copied ? 'Copied' : 'Copy'}
@@ -440,22 +451,23 @@ const CodeFormatter = () => {
 
         {/* Split View Editor & Color-Coded Highlighted Output */}
         <div className="formatter-split-grid">
-          {/* Left: Input Textarea */}
-          <div className="code-editor-container">
-            <div className="code-editor-header">
+          {/* Left: Input Textarea Container */}
+          <div className="code-editor-container flex flex-col">
+            <div className="code-editor-header flex justify-between items-center">
               <span className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Raw Input</span>
               <span className="badge-lang">{language.toUpperCase()}</span>
             </div>
-            <div className="code-editor-body">
-              <textarea
-                className="code-textarea"
-                placeholder="Paste code here..."
-                value={inputCode}
-                onChange={(e) => setInputCode(e.target.value)}
-                spellCheck="false"
-                style={{ minHeight: '55vh' }}
-              />
-            </div>
+            <CodeDropzoneTextarea
+              value={inputCode}
+              onChange={(val) => setInputCode(val)}
+              onFileLoaded={(res) => {
+                if (res.detectedLanguage) {
+                  setLanguage(res.detectedLanguage);
+                }
+              }}
+              placeholder="Paste or drag & drop code file here..."
+              style={{ minHeight: '55vh' }}
+            />
           </div>
 
           {/* Right: Formatted & Color Coded Output */}

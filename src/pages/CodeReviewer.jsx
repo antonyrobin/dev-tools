@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
+import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Search, AlertCircle, CheckCircle } from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
 
@@ -11,7 +12,6 @@ const CodeReviewer = () => {
 
   const analyzeCode = () => {
     setIsAnalyzing(true);
-    // Simple mock heuristic code analysis
     setTimeout(() => {
       const foundIssues = [];
       if (code.includes('var ')) {
@@ -36,7 +36,7 @@ const CodeReviewer = () => {
 
       setIssues(foundIssues);
       setIsAnalyzing(false);
-    }, 1500); // simulate delay
+    }, 1500);
   };
 
   return (
@@ -49,23 +49,30 @@ const CodeReviewer = () => {
       />
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)', gap: '2rem' }}>
-        <div className="glass-card flex flex-col">
+        <div className="code-editor-container flex flex-col">
           <div className="code-editor-header">
             <span className="font-mono text-sm">Source Code</span>
-            <button className="btn btn-primary btn-sm" onClick={analyzeCode} disabled={!code || isAnalyzing} style={{ padding: '0.4rem 1rem' }}>
-              {isAnalyzing ? 'Analyzing...' : 'Review Code'}
-            </button>
+            <div className="flex gap-2">
+              <UploadButton 
+                label="Upload"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
+                onFileLoaded={(res) => setCode(res.content)}
+              />
+              <button className="btn btn-primary btn-sm" onClick={analyzeCode} disabled={!code || isAnalyzing} style={{ padding: '0.4rem 1rem' }}>
+                {isAnalyzing ? 'Analyzing...' : 'Review Code'}
+              </button>
+            </div>
           </div>
-          <textarea
-            className="code-textarea"
-            placeholder="Paste code to review..."
+          <CodeDropzoneTextarea
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(val) => setCode(val)}
+            placeholder="Paste or drag & drop code file to review..."
             style={{ flex: 1, minHeight: '65vh' }}
           />
         </div>
 
-        <div className="glass-card flex flex-col" style={{ background: 'var(--bg-primary)' }}>
+        <div className="code-editor-container flex flex-col" style={{ background: 'var(--bg-primary)' }}>
           <div className="code-editor-header">
             <span className="font-mono text-sm">Review Results</span>
           </div>

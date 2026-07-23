@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
+import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Zap, Copy, Check } from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
 
@@ -10,19 +11,12 @@ const CodeMinifier = () => {
   const [copied, setCopied] = useState(false);
 
   const handleMinify = () => {
-    // Basic regex-based minifier for demonstration
-    // Removes comments, newlines, and extra spaces
     try {
       let minified = inputCode
-        // Remove single line comments
         .replace(/\/\/.*$/gm, '')
-        // Remove multi-line comments
         .replace(/\/\*[\s\S]*?\*\//g, '')
-        // Remove newlines and tabs
         .replace(/[\n\r\t]/g, '')
-        // Remove multiple spaces
         .replace(/\s{2,}/g, ' ')
-        // Remove spaces around operators
         .replace(/\s*([=+\-*/<>{}()[\];,:.!])\s*/g, '$1');
         
       setOutputCode(minified);
@@ -47,23 +41,30 @@ const CodeMinifier = () => {
       />
 
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-        <div className="glass-card flex flex-col">
+        <div className="code-editor-container flex flex-col">
           <div className="code-editor-header">
             <span className="font-mono text-sm">Original Code</span>
-            <button className="btn btn-secondary btn-sm" onClick={handleMinify} disabled={!inputCode} style={{ padding: '0.4rem 1rem' }}>
-              Minify
-            </button>
+            <div className="flex gap-2">
+              <UploadButton 
+                label="Upload"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
+                onFileLoaded={(res) => setInputCode(res.content)}
+              />
+              <button className="btn btn-secondary btn-sm" onClick={handleMinify} disabled={!inputCode} style={{ padding: '0.4rem 1rem' }}>
+                Minify
+              </button>
+            </div>
           </div>
-          <textarea
-            className="code-textarea"
-            placeholder="Paste source code here..."
+          <CodeDropzoneTextarea
             value={inputCode}
-            onChange={(e) => setInputCode(e.target.value)}
+            onChange={(val) => setInputCode(val)}
+            placeholder="Paste or drag & drop source code file..."
             style={{ flex: 1, minHeight: '65vh' }}
           />
         </div>
 
-        <div className="glass-card flex flex-col">
+        <div className="code-editor-container flex flex-col">
           <div className="code-editor-header">
             <span className="font-mono text-sm">Minified Output</span>
             <button className="btn btn-outline btn-sm" onClick={handleCopy} disabled={!outputCode} style={{ padding: '0.4rem 1rem' }}>
