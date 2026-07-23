@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+// eslint-disable-next-line no-unused-vars
 const ToolHeader = ({ title, description, icon: Icon, color }) => {
   return (
     <div className="mb-6 animate-fade-in">

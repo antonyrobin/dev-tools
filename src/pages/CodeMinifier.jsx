@@ -26,7 +26,7 @@ const CodeMinifier = () => {
         .replace(/\s*([=+\-*/<>{}()[\];,:.!])\s*/g, '$1');
         
       setOutputCode(minified);
-    } catch (e) {
+    } catch {
       setOutputCode('Error processing code.');
     }
   };

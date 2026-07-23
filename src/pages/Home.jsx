@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Code, Zap, FileJson, Cpu, QrCode, ShieldCheck, ArrowRight, AlignJustify } from 'lucide-react';
+import { Code, Zap, FileJson, Cpu, QrCode, ShieldCheck, ArrowRight, AlignJustify, GitCompare } from 'lucide-react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import usePageTitle from '../hooks/usePageTitle';
 import './Home.css';
@@ -12,6 +12,13 @@ const features = [
     description: "Instantly beautify your HTML, CSS, JavaScript, and JSON code.",
     path: "/format",
     color: "var(--primary)"
+  },
+  {
+    icon: <GitCompare size={24} />,
+    title: "Text Comparison",
+    description: "Compare two texts side-by-side with color-coded diff highlights.",
+    path: "/compare",
+    color: "var(--accent)"
   },
   {
     icon: <Zap size={24} />,

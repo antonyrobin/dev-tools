@@ -12,6 +12,7 @@ const Navbar = () => {
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Format', path: '/format' },
+    { name: 'Compare', path: '/compare' },
     { name: 'QR Code', path: '/qr-code' },
     { name: 'Barcode', path: '/barcode' },
   ];
