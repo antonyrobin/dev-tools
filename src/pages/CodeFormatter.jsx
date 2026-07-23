@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import ToolHeader from '../components/ToolHeader';
-import { FileJson, Play, Copy, Check, Maximize2, Minimize2, X, RotateCcw } from 'lucide-react';
+import { FileJson, Play, Copy, Check, Maximize2, X, RotateCcw, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
 import prettierPluginEstree from 'prettier/plugins/estree';
@@ -65,7 +66,6 @@ const defaultSampleCode = {
 
 const CodeFormatter = () => {
   usePageTitle('Code Formatter');
-  // Requirement I.1: Default code language should be selected as JSON
   const [language, setLanguage] = useState('json');
   const [inputCode, setInputCode] = useState(defaultSampleCode.json);
   const [formattedCode, setFormattedCode] = useState(defaultSampleCode.json);
@@ -74,18 +74,164 @@ const CodeFormatter = () => {
   const [error, setError] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
+  // Search feature states for full screen mode
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [totalMatches, setTotalMatches] = useState(0);
+
   const codeRef = useRef(null);
   const modalCodeRef = useRef(null);
+  const searchInputRef = useRef(null);
 
-  // Requirement I.2: Color codes applied for all languages via Prism
+  // Syntax highlighting for split preview
   useEffect(() => {
     if (codeRef.current) {
       Prism.highlightElement(codeRef.current);
     }
-    if (modalCodeRef.current) {
-      Prism.highlightElement(modalCodeRef.current);
+  }, [formattedCode, language]);
+
+  const closeFullScreen = useCallback(() => {
+    setIsFullScreen(false);
+    setSearchQuery('');
+    setTotalMatches(0);
+    setCurrentMatchIndex(0);
+  }, []);
+
+  // Lock body scrolling when Full Screen modal is open to ensure only 1 single scrollbar exists
+  useEffect(() => {
+    if (isFullScreen) {
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 100);
+    } else {
+      document.body.style.overflow = '';
     }
-  }, [formattedCode, language, isFullScreen]);
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFullScreen]);
+
+  // Handle DOM Search Highlighting
+  useEffect(() => {
+    if (!isFullScreen || !modalCodeRef.current) return;
+
+    const container = modalCodeRef.current;
+    
+    // Re-run Prism highlight on modal container
+    Prism.highlightElement(container);
+
+    if (!searchQuery.trim()) {
+      requestAnimationFrame(() => {
+        setTotalMatches(0);
+        setCurrentMatchIndex(0);
+      });
+      return;
+    }
+
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+
+    const textNodes = [];
+    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while ((node = walk.nextNode())) {
+      textNodes.push(node);
+    }
+
+    const createdMarks = [];
+
+    textNodes.forEach((textNode) => {
+      const text = textNode.nodeValue;
+      if (!text) return;
+
+      let match;
+      regex.lastIndex = 0;
+      const matchesInNode = [];
+
+      while ((match = regex.exec(text)) !== null) {
+        matchesInNode.push({
+          index: match.index,
+          length: match[0].length,
+          text: match[0]
+        });
+      }
+
+      if (matchesInNode.length > 0) {
+        const parent = textNode.parentNode;
+        const frag = document.createDocumentFragment();
+        let lastIdx = 0;
+
+        matchesInNode.forEach((m) => {
+          if (m.index > lastIdx) {
+            frag.appendChild(document.createTextNode(text.substring(lastIdx, m.index)));
+          }
+
+          const mark = document.createElement('mark');
+          mark.className = 'search-match';
+          mark.textContent = m.text;
+          frag.appendChild(mark);
+          createdMarks.push(mark);
+
+          lastIdx = m.index + m.length;
+        });
+
+        if (lastIdx < text.length) {
+          frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+        }
+
+        parent.replaceChild(frag, textNode);
+      }
+    });
+
+    const count = createdMarks.length;
+
+    requestAnimationFrame(() => {
+      setTotalMatches(count);
+      if (count > 0) {
+        const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
+        if (validIndex !== currentMatchIndex) {
+          setCurrentMatchIndex(validIndex);
+        }
+        if (createdMarks[validIndex]) {
+          createdMarks[validIndex].classList.add('search-match-active');
+          createdMarks[validIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } else {
+        setCurrentMatchIndex(0);
+      }
+    });
+  }, [searchQuery, currentMatchIndex, isFullScreen, formattedCode, language]);
+
+  const handleNextMatch = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
+  };
+
+  const handlePrevMatch = () => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        handlePrevMatch();
+      } else {
+        handleNextMatch();
+      }
+    } else if (e.key === 'Escape') {
+      if (searchQuery) {
+        e.stopPropagation();
+        setSearchQuery('');
+      } else {
+        closeFullScreen();
+      }
+    }
+  };
 
   const basicIndenter = (code) => {
     let indentLevel = 0;
@@ -210,13 +356,13 @@ const CodeFormatter = () => {
   // Close modal on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullScreen) {
-        setIsFullScreen(false);
+      if (e.key === 'Escape' && isFullScreen && !searchQuery) {
+        closeFullScreen();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullScreen]);
+  }, [isFullScreen, searchQuery, closeFullScreen]);
 
   const languages = [
     { value: 'json', label: 'JSON' },
@@ -317,7 +463,6 @@ const CodeFormatter = () => {
             <div className="code-editor-header flex justify-between items-center">
               <span className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Formatted & Highlighted Output</span>
               
-              {/* Requirement I.3: Fullscreen View Option */}
               <button 
                 className="btn btn-ghost btn-sm flex items-center gap-1"
                 onClick={() => setIsFullScreen(true)}
@@ -339,35 +484,92 @@ const CodeFormatter = () => {
         </div>
       </div>
 
-      {/* Requirement I.3: Full Screen Modal Overlay */}
-      {isFullScreen && (
-        <div className="fullscreen-modal-backdrop" onClick={() => setIsFullScreen(false)}>
-          <div className="fullscreen-modal-content glass-card" onClick={(e) => e.stopPropagation()}>
-            <div className="fullscreen-modal-header flex justify-between items-center p-4">
-              <div className="flex items-center gap-3">
-                <FileJson size={24} style={{ color: 'var(--primary)' }} />
-                <h3 className="mb-0" style={{ fontSize: '1.25rem' }}>Formatted Code View ({language.toUpperCase()})</h3>
+      {/* Full Screen View Overlay - Rendered via React Portal directly into document.body to cover main Navbar & full screen */}
+      {isFullScreen && createPortal(
+        <div className="fullscreen-overlay-page">
+          <div className="fullscreen-header">
+            {/* Title Section */}
+            <div className="fullscreen-title-area">
+              <FileJson size={20} style={{ color: 'var(--primary)' }} />
+              <span style={{ fontSize: '1rem', fontWeight: 700 }}>
+                Formatted View <span className="badge-lang ml-1">{language.toUpperCase()}</span>
+              </span>
+            </div>
+
+            {/* Find Text Search Bar (Middle on Desktop, full width 2nd row on Mobile) */}
+            <div className="fullscreen-search-bar">
+              <div className="search-input-wrapper">
+                <Search size={15} className="search-icon" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="search-input"
+                  placeholder="Find text (Enter / Shift+Enter)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                />
+                {searchQuery && (
+                  <button className="search-clear-btn" onClick={() => setSearchQuery('')} title="Clear search">
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                <button className="btn btn-outline btn-sm" onClick={() => handleCopy(true)}>
-                  {fullscreenCopied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-                  {fullscreenCopied ? 'Copied' : 'Copy Code'}
+
+              {/* Match Count Indicator */}
+              <div className="search-count-badge">
+                {totalMatches > 0 ? (
+                  <span>{currentMatchIndex + 1}/{totalMatches}</span>
+                ) : searchQuery ? (
+                  <span className="text-muted">0/0</span>
+                ) : (
+                  <span className="text-muted">Find</span>
+                )}
+              </div>
+
+              {/* Navigation Up & Down Arrows */}
+              <div className="flex items-center gap-1">
+                <button 
+                  className="btn btn-ghost btn-xs search-nav-btn"
+                  onClick={handlePrevMatch}
+                  disabled={totalMatches === 0}
+                  title="Previous match (Shift+Enter)"
+                >
+                  <ChevronUp size={15} />
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setIsFullScreen(false)} title="Close (Esc)">
-                  <X size={22} />
+                <button 
+                  className="btn btn-ghost btn-xs search-nav-btn"
+                  onClick={handleNextMatch}
+                  disabled={totalMatches === 0}
+                  title="Next match (Enter)"
+                >
+                  <ChevronDown size={15} />
                 </button>
               </div>
             </div>
 
-            <div className="fullscreen-modal-body p-4" style={{ flex: 1, overflow: 'auto', background: '#0e0f17' }}>
-              <pre style={{ margin: 0, background: 'transparent' }}>
-                <code ref={modalCodeRef} className={prismLangClass}>
-                  {formattedCode || inputCode}
-                </code>
-              </pre>
+            {/* Action Buttons (Always 100% visible on right) */}
+            <div className="fullscreen-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => handleCopy(true)}>
+                {fullscreenCopied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
+                <span>{fullscreenCopied ? 'Copied' : 'Copy'}</span>
+              </button>
+              <button className="btn btn-ghost btn-sm close-modal-btn" onClick={closeFullScreen} title="Close Fullscreen (Esc)">
+                <X size={20} />
+              </button>
             </div>
           </div>
-        </div>
+
+          {/* Full Screen Code Body - ONLY 1 SCROLLBAR ON SCREEN */}
+          <div className="fullscreen-code-body p-6">
+            <pre style={{ margin: 0, background: 'transparent', fontFamily: 'var(--font-mono)' }}>
+              <code ref={modalCodeRef} className={prismLangClass}>
+                {formattedCode || inputCode}
+              </code>
+            </pre>
+          </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -387,46 +589,181 @@ const CodeFormatter = () => {
           letter-spacing: 0.5px;
         }
 
-        .fullscreen-modal-backdrop {
+        /* Full Screen Cover Styling - Portal to <body> guarantees covering site Navbar */
+        .fullscreen-overlay-page {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.85);
-          backdrop-filter: blur(8px);
-          z-index: 9999;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 2rem;
-        }
-
-        .fullscreen-modal-content {
-          width: 95vw;
-          height: 90vh;
+          width: 100vw;
+          height: 100vh;
+          max-width: 100%;
+          max-height: 100%;
+          background: #0a0a0f;
+          z-index: 999999; /* Higher than Navbar z-index: 50 */
           display: flex;
           flex-direction: column;
-          border-radius: var(--radius-xl);
+          box-sizing: border-box;
           overflow: hidden;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
-          border: 1px solid var(--border-medium);
         }
 
-        .fullscreen-modal-header {
+        .fullscreen-header {
+          flex-shrink: 0;
+          background: #12131c;
           border-bottom: 1px solid var(--border-light);
-          background: var(--bg-secondary);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+          padding: 0.6rem 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          width: 100%;
+          box-sizing: border-box;
         }
 
-        @media (max-width: 900px) {
+        .fullscreen-title-area {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .fullscreen-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          flex-shrink: 0; /* Ensures Copy and Close buttons NEVER shrink or hide */
+        }
+
+        .fullscreen-code-body {
+          flex: 1;
+          overflow: auto; /* ONLY 1 SCROLLBAR FOR FULL PAGE */
+          background: #090a0e;
+        }
+
+        /* Search Bar in Full View Header */
+        .fullscreen-search-bar {
+          background: rgba(0, 0, 0, 0.4);
+          border: 1px solid var(--border-medium);
+          padding: 0.2rem 0.5rem;
+          border-radius: var(--radius-lg);
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          flex: 1;
+          max-width: 400px;
+          box-sizing: border-box;
+        }
+
+        .search-input-wrapper {
+          position: relative;
+          flex: 1;
+          display: flex;
+          align-items: center;
+          min-width: 80px;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 0.4rem;
+          color: var(--text-muted);
+          pointer-events: none;
+        }
+
+        .search-input {
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          padding: 0.3rem 1.6rem 0.3rem 1.8rem;
+          font-size: 0.85rem;
+          width: 100%;
+          outline: none;
+          font-family: inherit;
+        }
+
+        .search-clear-btn {
+          position: absolute;
+          right: 0.3rem;
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-clear-btn:hover {
+          color: var(--text-primary);
+        }
+
+        .search-count-badge {
+          font-size: 0.78rem;
+          font-weight: 600;
+          min-width: 45px;
+          text-align: center;
+          color: var(--text-secondary);
+          white-space: nowrap;
+        }
+
+        .search-nav-btn {
+          padding: 0.2rem;
+          border-radius: var(--radius-sm);
+        }
+
+        /* Highlight Search Matches */
+        mark.search-match {
+          background-color: rgba(245, 158, 11, 0.45);
+          color: #ffffff;
+          border-radius: 2px;
+          padding: 0 2px;
+        }
+
+        mark.search-match-active {
+          background-color: #f59e0b !important;
+          color: #000000 !important;
+          font-weight: bold;
+          outline: 2px solid #6366f1;
+          box-shadow: 0 0 12px rgba(99, 102, 241, 0.9);
+        }
+
+        /* Responsive Layout for Mobile and Tablet (<820px) */
+        @media (max-width: 820px) {
+          .fullscreen-header {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-areas:
+              "title actions"
+              "search search";
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+          }
+
+          .fullscreen-title-area {
+            grid-area: title;
+          }
+
+          .fullscreen-actions {
+            grid-area: actions;
+          }
+
+          .fullscreen-search-bar {
+            grid-area: search;
+            max-width: 100%;
+            width: 100%;
+          }
+
           .formatter-split-grid {
             grid-template-columns: 1fr;
           }
+
           .block-mobile {
             flex-direction: column;
             gap: 1rem;
             align-items: stretch !important;
           }
+
           .block-mobile > div:first-child {
             width: 100% !important;
           }
