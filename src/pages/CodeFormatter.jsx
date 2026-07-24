@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { FileJson, Play, Copy, Check, Maximize2, X, RotateCcw, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { FileJson, Play, Copy, Check, Maximize2, X, RotateCcw, Search, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
 import prettierPluginEstree from 'prettier/plugins/estree';
@@ -52,11 +52,11 @@ const languagePrismMap = {
 const defaultSampleCode = {
   json: '{\n  "name": "DevTools",\n  "version": "1.0.0",\n  "features": ["Formatter", "Compiler", "Compare"],\n  "status": true\n}',
   javascript: 'function greet(name){\nconsole.log("Hello, "+name+"!");\nreturn {success:true,timestamp:Date.now()};\n}',
-  html: '<div class="container"><h1>Hello World</h1><p>Welcome to DevTools</p></div>',
-  css: 'body{background-color:#0a0a0e;color:#fff;margin:0;}h1{font-size:2rem;}',
-  java: 'public class Main{\npublic static void main(String[] args){\nSystem.out.println("Hello Java");\n}\n}',
-  csharp: 'namespace HelloApp{\nclass Program{\nstatic void Main(string[] args){\nConsole.WriteLine("Hello C#");\n}\n}\n}',
-  python: 'def process_data(items):\n  result=[x*2 for x in items if x>0]\n  return result\n',
+  html: '<div class="container">\n  <h1>Hello World</h1>\n  <p>Welcome to DevTools</p>\n</div>',
+  css: 'body {\n  background-color: #0a0a0e;\n  color: #fff;\n  margin: 0;\n}\nh1 {\n  font-size: 2rem;\n}',
+  java: 'public class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello Java");\n  }\n}',
+  csharp: 'namespace HelloApp {\n  class Program {\n    static void Main(string[] args) {\n      Console.WriteLine("Hello C#");\n    }\n  }\n}',
+  python: 'def process_data(items):\n  result = [x * 2 for x in items if x > 0]\n  return result\n',
   sql: 'SELECT id, name, email, created_at FROM users WHERE status=\'active\' ORDER BY created_at DESC;',
   php: '<?php\n$user = ["name" => "John", "role" => "Admin"];\necho json_encode($user);\n?>',
   c: '#include <stdio.h>\nint main() {\n  printf("Hello, C World!\\n");\n  return 0;\n}',
@@ -64,6 +64,120 @@ const defaultSampleCode = {
   yaml: 'server:\n  port: 8080\n  environment: production\n  tags:\n    - web\n    - api',
   markdown: '# Title\n\n- Feature 1\n- Feature 2\n\n**Bold text** and *italic text*.'
 };
+
+/**
+ * Universal fold detector algorithm for all languages:
+ * Detects matching braces/brackets ({}, [], ()) and indentation blocks (Python, YAML, Markdown).
+ */
+function getFoldableRanges(code, language) {
+  if (!code) return {};
+  const lines = code.split('\n');
+  const foldRanges = {}; // startLineIndex -> endLineIndex
+
+  const stack = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    for (let charIdx = 0; charIdx < line.length; charIdx++) {
+      const char = line[charIdx];
+      if (char === '{' || char === '[' || char === '(') {
+        stack.push({ char, line: i });
+      } else if (char === '}' || char === ']' || char === ')') {
+        const matching = char === '}' ? '{' : char === ']' ? '[' : '(';
+        for (let s = stack.length - 1; s >= 0; s--) {
+          if (stack[s].char === matching) {
+            const start = stack[s].line;
+            if (i - start >= 1) {
+              if (!foldRanges[start] || i > foldRanges[start]) {
+                foldRanges[start] = i;
+              }
+            }
+            stack.splice(s, 1);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Indentation-based fold detection fallback (Python, YAML, Markdown)
+  if (['python', 'yaml'].includes(language) || Object.keys(foldRanges).length === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim() || foldRanges[i]) continue;
+
+      const currentIndent = line.search(/\S/);
+      if (currentIndent === -1) continue;
+
+      let lastIndented = i;
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j];
+        if (!nextLine.trim()) continue;
+        const nextIndent = nextLine.search(/\S/);
+        if (nextIndent > currentIndent) {
+          lastIndented = j;
+        } else {
+          break;
+        }
+      }
+
+      if (lastIndented > i) {
+        foldRanges[i] = lastIndented;
+      }
+    }
+  }
+
+  return foldRanges;
+}
+
+/**
+ * Splits Prism syntax-highlighted HTML string into individual line HTML strings,
+ * properly closing and re-opening open HTML span tags across newline boundaries.
+ */
+function splitPrismHtmlIntoLines(html) {
+  if (!html) return [];
+  const lines = [];
+  let currentLine = '';
+  const openTags = [];
+
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '\n') {
+      let closedTags = '';
+      for (let t = openTags.length - 1; t >= 0; t--) {
+        closedTags += '</span>';
+      }
+      lines.push(currentLine + closedTags);
+
+      let reopenedTags = '';
+      for (let t = 0; t < openTags.length; t++) {
+        reopenedTags += openTags[t];
+      }
+      currentLine = reopenedTags;
+      i++;
+    } else if (html[i] === '<') {
+      const tagEnd = html.indexOf('>', i);
+      if (tagEnd !== -1) {
+        const tag = html.substring(i, tagEnd + 1);
+        if (tag.startsWith('</')) {
+          openTags.pop();
+        } else if (!tag.endsWith('/>') && !tag.startsWith('<?')) {
+          openTags.push(tag);
+        }
+        currentLine += tag;
+        i = tagEnd + 1;
+      } else {
+        currentLine += html[i];
+        i++;
+      }
+    } else {
+      currentLine += html[i];
+      i++;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
 
 const CodeFormatter = () => {
   usePageTitle('Code Formatter');
@@ -75,21 +189,38 @@ const CodeFormatter = () => {
   const [error, setError] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Search feature states for full screen mode
+  // Search feature states
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [totalMatches, setTotalMatches] = useState(0);
+
+  // Code Folding states: object map of collapsed startLine index -> boolean
+  const [collapsedFolds, setCollapsedFolds] = useState({});
 
   const codeRef = useRef(null);
   const modalCodeRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // Syntax highlighting for split preview
+  // Highlight preview in split view
   useEffect(() => {
     if (codeRef.current) {
       Prism.highlightElement(codeRef.current);
     }
   }, [formattedCode, language]);
+
+  // Compute fold ranges for current code
+  const activeCode = formattedCode || inputCode;
+  const foldRanges = useMemo(() => {
+    return getFoldableRanges(activeCode, language);
+  }, [activeCode, language]);
+
+  // Prism highlighted line HTMLs for full screen view
+  const highlightedLines = useMemo(() => {
+    const prismLang = languagePrismMap[language] || 'javascript';
+    const grammar = Prism.languages[prismLang] || Prism.languages.javascript;
+    const highlightedHtml = Prism.highlight(activeCode, grammar, prismLang);
+    return splitPrismHtmlIntoLines(highlightedHtml);
+  }, [activeCode, language]);
 
   const closeFullScreen = useCallback(() => {
     setIsFullScreen(false);
@@ -98,7 +229,7 @@ const CodeFormatter = () => {
     setCurrentMatchIndex(0);
   }, []);
 
-  // Lock body scrolling when Full Screen modal is open to ensure only 1 single scrollbar exists
+  // Lock body scrolling on Full Screen
   useEffect(() => {
     if (isFullScreen) {
       document.body.style.overflow = 'hidden';
@@ -115,96 +246,168 @@ const CodeFormatter = () => {
     };
   }, [isFullScreen]);
 
-  // Handle DOM Search Highlighting
+  // Toggle single fold range
+  const toggleFold = (startLine) => {
+    setCollapsedFolds((prev) => ({
+      ...prev,
+      [startLine]: !prev[startLine],
+    }));
+  };
+
+  // Expand all sections
+  const handleExpandAll = () => {
+    setCollapsedFolds({});
+  };
+
+  // Collapse all sections
+  const handleCollapseAll = () => {
+    const all = {};
+    Object.keys(foldRanges).forEach((line) => {
+      all[line] = true;
+    });
+    setCollapsedFolds(all);
+  };
+
+  // Cross-token DOM Search Highlighting algorithm
   useEffect(() => {
     if (!isFullScreen || !modalCodeRef.current) return;
 
     const container = modalCodeRef.current;
-    
-    // Re-run Prism highlight on modal container
-    Prism.highlightElement(container);
+
+    // 1. Remove existing mark tags
+    const existingMarks = container.querySelectorAll('mark.search-match');
+    existingMarks.forEach((mark) => {
+      const parent = mark.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+        parent.normalize();
+      }
+    });
 
     if (!searchQuery.trim()) {
-      requestAnimationFrame(() => {
-        setTotalMatches(0);
-        setCurrentMatchIndex(0);
-      });
+      setTotalMatches(0);
+      setCurrentMatchIndex(0);
       return;
     }
 
-    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escaped, 'gi');
-
+    // 2. Collect text nodes inside code content area, skipping gutter/fold elements
     const textNodes = [];
-    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parent = node.parentNode;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('.code-fold-gutter') || parent.closest('.collapsed-preview-badge')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }, false);
+
     let node;
     while ((node = walk.nextNode())) {
       textNodes.push(node);
     }
 
-    const createdMarks = [];
+    if (textNodes.length === 0) {
+      setTotalMatches(0);
+      setCurrentMatchIndex(0);
+      return;
+    }
 
-    textNodes.forEach((textNode) => {
-      const text = textNode.nodeValue;
-      if (!text) return;
-
-      let match;
-      regex.lastIndex = 0;
-      const matchesInNode = [];
-
-      while ((match = regex.exec(text)) !== null) {
-        matchesInNode.push({
-          index: match.index,
-          length: match[0].length,
-          text: match[0]
-        });
-      }
-
-      if (matchesInNode.length > 0) {
-        const parent = textNode.parentNode;
-        const frag = document.createDocumentFragment();
-        let lastIdx = 0;
-
-        matchesInNode.forEach((m) => {
-          if (m.index > lastIdx) {
-            frag.appendChild(document.createTextNode(text.substring(lastIdx, m.index)));
-          }
-
-          const mark = document.createElement('mark');
-          mark.className = 'search-match';
-          mark.textContent = m.text;
-          frag.appendChild(mark);
-          createdMarks.push(mark);
-
-          lastIdx = m.index + m.length;
-        });
-
-        if (lastIdx < text.length) {
-          frag.appendChild(document.createTextNode(text.substring(lastIdx)));
-        }
-
-        parent.replaceChild(frag, textNode);
-      }
+    // 3. Build concatenated full string & map text node bounds
+    let fullText = '';
+    const nodeMap = [];
+    textNodes.forEach((tn) => {
+      const start = fullText.length;
+      const text = tn.nodeValue || '';
+      fullText += text;
+      nodeMap.push({ node: tn, start, end: start + text.length, text });
     });
 
-    const count = createdMarks.length;
+    // 4. Find all regex match positions in fullText (supports searching with ":", quotes, punctuation)
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+    const matches = [];
+    let match;
+    while ((match = regex.exec(fullText)) !== null) {
+      if (match[0].length === 0) {
+        regex.lastIndex++;
+        continue;
+      }
+      matches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[0]
+      });
+    }
 
+    const count = matches.length;
+    setTotalMatches(count);
+
+    if (count === 0) {
+      setCurrentMatchIndex(0);
+      return;
+    }
+
+    const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
+    if (validIndex !== currentMatchIndex) {
+      setCurrentMatchIndex(validIndex);
+    }
+
+    // 5. Apply mark elements per text node fragment
+    const createdMarksPerMatch = Array.from({ length: count }, () => []);
+
+    nodeMap.forEach(({ node, start: nodeStart, end: nodeEnd, text }) => {
+      const overlapping = [];
+      matches.forEach((m, mIdx) => {
+        if (m.end > nodeStart && m.start < nodeEnd) {
+          const relStart = Math.max(0, m.start - nodeStart);
+          const relEnd = Math.min(text.length, m.end - nodeStart);
+          overlapping.push({ mIdx, relStart, relEnd });
+        }
+      });
+
+      if (overlapping.length === 0) return;
+
+      const parent = node.parentNode;
+      if (!parent) return;
+
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+
+      overlapping.forEach(({ mIdx, relStart, relEnd }) => {
+        if (relStart > lastIdx) {
+          frag.appendChild(document.createTextNode(text.substring(lastIdx, relStart)));
+        }
+
+        const mark = document.createElement('mark');
+        mark.className = 'search-match';
+        mark.setAttribute('data-match-idx', String(mIdx));
+        if (mIdx === validIndex) {
+          mark.classList.add('search-match-active');
+        }
+        mark.textContent = text.substring(relStart, relEnd);
+        frag.appendChild(mark);
+        createdMarksPerMatch[mIdx].push(mark);
+
+        lastIdx = relEnd;
+      });
+
+      if (lastIdx < text.length) {
+        frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+      }
+
+      parent.replaceChild(frag, node);
+    });
+
+    // 6. Scroll active match into view
     requestAnimationFrame(() => {
-      setTotalMatches(count);
-      if (count > 0) {
-        const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
-        if (validIndex !== currentMatchIndex) {
-          setCurrentMatchIndex(validIndex);
-        }
-        if (createdMarks[validIndex]) {
-          createdMarks[validIndex].classList.add('search-match-active');
-          createdMarks[validIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      } else {
-        setCurrentMatchIndex(0);
+      const activeMarks = createdMarksPerMatch[validIndex];
+      if (activeMarks && activeMarks[0]) {
+        activeMarks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     });
-  }, [searchQuery, currentMatchIndex, isFullScreen, formattedCode, language]);
+  }, [searchQuery, currentMatchIndex, isFullScreen, activeCode, language, collapsedFolds]);
 
   const handleNextMatch = () => {
     if (totalMatches === 0) return;
@@ -275,6 +478,7 @@ const CodeFormatter = () => {
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
     setError(null);
+    setCollapsedFolds({});
     if (!inputCode.trim() || Object.values(defaultSampleCode).includes(inputCode)) {
       const sample = defaultSampleCode[newLang] || '';
       setInputCode(sample);
@@ -285,6 +489,7 @@ const CodeFormatter = () => {
   const handleFormat = async () => {
     try {
       setError(null);
+      setCollapsedFolds({});
       if (!inputCode.trim()) {
         setFormattedCode('');
         return;
@@ -383,6 +588,19 @@ const CodeFormatter = () => {
 
   const prismLangClass = `language-${languagePrismMap[language] || 'javascript'}`;
 
+  // Helper to determine if a line index is currently hidden under a collapsed fold
+  const isLineHidden = (lineIdx) => {
+    for (const [startStr, isCollapsed] of Object.entries(collapsedFolds)) {
+      if (!isCollapsed) continue;
+      const start = parseInt(startStr, 10);
+      const end = foldRanges[start];
+      if (end && lineIdx > start && lineIdx <= end) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   return (
     <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
       <ToolHeader 
@@ -393,10 +611,10 @@ const CodeFormatter = () => {
       />
 
       <div className="glass-card p-6" style={{ padding: '1.5rem' }}>
-        {/* Controls Toolbar */}
-        <div className="flex justify-between items-center mb-4 block-mobile">
-          <div className="flex items-center gap-3">
-            <div className="form-group mb-0" style={{ width: '220px' }}>
+        {/* Responsive Controls Toolbar */}
+        <div className="flex justify-between items-center mb-4 block-mobile gap-3">
+          <div className="tool-controls-bar">
+            <div className="form-group mb-0" style={{ minWidth: '140px', flex: '1 1 auto' }}>
               <select 
                 className="form-select"
                 value={language}
@@ -408,23 +626,21 @@ const CodeFormatter = () => {
               </select>
             </div>
             <button 
-              className="btn btn-ghost" 
+              className="btn btn-ghost btn-sm" 
               onClick={() => {
                 const sample = defaultSampleCode[language] || '';
                 setInputCode(sample);
                 setFormattedCode(sample);
                 setError(null);
+                setCollapsedFolds({});
               }}
               title="Reset Sample Code"
             >
-              <RotateCcw size={16} /> Sample
+              <RotateCcw size={16} /> <span>Sample</span>
             </button>
-          </div>
-
-          <div className="flex gap-3">
             <UploadButton 
-              label="Upload File"
-              className="btn btn-outline"
+              label="Upload"
+              className="btn btn-outline btn-sm"
               onFileLoaded={(res) => {
                 setInputCode(res.content);
                 if (res.detectedLanguage) {
@@ -432,16 +648,20 @@ const CodeFormatter = () => {
                 }
               }}
             />
-            <button className="btn btn-outline" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
-              {copied ? <Check size={18} className="text-success" /> : <Copy size={18} />}
-              {copied ? 'Copied' : 'Copy'}
+            <button className="btn btn-outline btn-sm" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
+              {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            <button className="btn btn-primary" onClick={handleFormat} disabled={!inputCode}>
+          </div>
+
+          <div className="flex items-center w-full-mobile">
+            <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleFormat} disabled={!inputCode}>
               <Play size={18} />
-              Format Code
+              <span>Format Code</span>
             </button>
           </div>
         </div>
+
 
         {error && (
           <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
@@ -496,7 +716,7 @@ const CodeFormatter = () => {
         </div>
       </div>
 
-      {/* Full Screen View Overlay - Rendered via React Portal directly into document.body to cover main Navbar & full screen */}
+      {/* Full Screen View Overlay - Rendered via React Portal */}
       {isFullScreen && createPortal(
         <div className="fullscreen-overlay-page">
           <div className="fullscreen-header">
@@ -508,7 +728,7 @@ const CodeFormatter = () => {
               </span>
             </div>
 
-            {/* Find Text Search Bar (Middle on Desktop, full width 2nd row on Mobile) */}
+            {/* Expand / Collapse All & Search Bar */}
             <div className="fullscreen-search-bar">
               <div className="search-input-wrapper">
                 <Search size={15} className="search-icon" />
@@ -516,7 +736,7 @@ const CodeFormatter = () => {
                   ref={searchInputRef}
                   type="text"
                   className="search-input"
-                  placeholder="Find text (Enter / Shift+Enter)..."
+                  placeholder="Find text (e.g. &quot;version&quot;:)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
@@ -560,25 +780,83 @@ const CodeFormatter = () => {
               </div>
             </div>
 
-            {/* Action Buttons (Always 100% visible on right) */}
+            {/* Action Buttons: Expand/Collapse All, Copy, Close */}
             <div className="fullscreen-actions">
+              <button 
+                className="btn btn-outline btn-sm fold-control-btn"
+                onClick={handleExpandAll}
+                title="Expand all collapsible ranges"
+              >
+                <ChevronsUpDown size={15} />
+                <span className="hide-mobile-text">Expand All</span>
+              </button>
+              <button 
+                className="btn btn-outline btn-sm fold-control-btn"
+                onClick={handleCollapseAll}
+                title="Collapse all sections"
+              >
+                <ChevronsDownUp size={15} />
+                <span className="hide-mobile-text">Collapse All</span>
+              </button>
+
               <button className="btn btn-outline btn-sm" onClick={() => handleCopy(true)}>
                 {fullscreenCopied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
                 <span>{fullscreenCopied ? 'Copied' : 'Copy'}</span>
               </button>
+
               <button className="btn btn-ghost btn-sm close-modal-btn" onClick={closeFullScreen} title="Close Fullscreen (Esc)">
                 <X size={20} />
               </button>
             </div>
           </div>
 
-          {/* Full Screen Code Body - ONLY 1 SCROLLBAR ON SCREEN */}
-          <div className="fullscreen-code-body p-6">
-            <pre style={{ margin: 0, background: 'transparent', fontFamily: 'var(--font-mono)' }}>
-              <code ref={modalCodeRef} className={prismLangClass}>
-                {formattedCode || inputCode}
-              </code>
-            </pre>
+          {/* Full Screen Code Body with Line Gutter & Collapsible Ranges */}
+          <div className="fullscreen-code-body p-6" ref={modalCodeRef}>
+            <div className="code-lines-container font-mono text-sm" style={{ lineHeight: '1.6', background: '#090a0e' }}>
+              {highlightedLines.map((lineHtml, lineIdx) => {
+                const hidden = isLineHidden(lineIdx);
+                if (hidden) return null;
+
+                const hasFold = foldRanges[lineIdx] !== undefined;
+                const isCollapsed = Boolean(collapsedFolds[lineIdx]);
+                const collapsedEnd = foldRanges[lineIdx];
+                const collapsedCount = collapsedEnd ? collapsedEnd - lineIdx : 0;
+
+                return (
+                  <div key={lineIdx} className="code-line-row flex items-start">
+                    {/* Line Number & Code Folding Gutter */}
+                    <div className="code-fold-gutter flex items-center justify-end">
+                      <span className="line-num-text">{lineIdx + 1}</span>
+                      {hasFold && (
+                        <button
+                          className="fold-btn"
+                          onClick={() => toggleFold(lineIdx)}
+                          title={isCollapsed ? "Click to expand the range." : "Click to collapse the range."}
+                        >
+                          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Syntax Highlighted Line Content */}
+                    <div className="code-line-content flex-1 flex items-center flex-wrap" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      <span dangerouslySetInnerHTML={{ __html: lineHtml || ' ' }} />
+
+                      {/* Collapsed Indicator Badge */}
+                      {hasFold && isCollapsed && (
+                        <span
+                          className="collapsed-preview-badge"
+                          onClick={() => toggleFold(lineIdx)}
+                          title="Click to expand the range."
+                        >
+                          ... {collapsedCount} lines
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>,
         document.body
@@ -601,7 +879,6 @@ const CodeFormatter = () => {
           letter-spacing: 0.5px;
         }
 
-        /* Full Screen Cover Styling - Portal to <body> guarantees covering site Navbar */
         .fullscreen-overlay-page {
           position: fixed;
           top: 0;
@@ -613,7 +890,7 @@ const CodeFormatter = () => {
           max-width: 100%;
           max-height: 100%;
           background: #0a0a0f;
-          z-index: 999999; /* Higher than Navbar z-index: 50 */
+          z-index: 999999;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
@@ -645,17 +922,16 @@ const CodeFormatter = () => {
         .fullscreen-actions {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          flex-shrink: 0; /* Ensures Copy and Close buttons NEVER shrink or hide */
+          gap: 0.4rem;
+          flex-shrink: 0;
         }
 
         .fullscreen-code-body {
           flex: 1;
-          overflow: auto; /* ONLY 1 SCROLLBAR FOR FULL PAGE */
+          overflow: auto;
           background: #090a0e;
         }
 
-        /* Search Bar in Full View Header */
         .fullscreen-search-bar {
           background: rgba(0, 0, 0, 0.4);
           border: 1px solid var(--border-medium);
@@ -665,7 +941,7 @@ const CodeFormatter = () => {
           align-items: center;
           gap: 0.4rem;
           flex: 1;
-          max-width: 400px;
+          max-width: 420px;
           box-sizing: border-box;
         }
 
@@ -724,20 +1000,8 @@ const CodeFormatter = () => {
           border-radius: var(--radius-sm);
         }
 
-        /* Highlight Search Matches */
-        mark.search-match {
-          background-color: rgba(245, 158, 11, 0.45);
-          color: #ffffff;
-          border-radius: 2px;
-          padding: 0 2px;
-        }
-
-        mark.search-match-active {
-          background-color: #f59e0b !important;
-          color: #000000 !important;
-          font-weight: bold;
-          outline: 2px solid #6366f1;
-          box-shadow: 0 0 12px rgba(99, 102, 241, 0.9);
+        .code-line-row:hover {
+          background: rgba(255, 255, 255, 0.02);
         }
 
         /* Responsive Layout for Mobile and Tablet (<820px) */
@@ -772,12 +1036,12 @@ const CodeFormatter = () => {
 
           .block-mobile {
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.75rem;
             align-items: stretch !important;
           }
 
-          .block-mobile > div:first-child {
-            width: 100% !important;
+          .hide-mobile-text {
+            display: none;
           }
         }
       `}</style>

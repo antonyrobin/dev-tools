@@ -353,4 +353,124 @@ a:hover {
   .page-container {
     padding-top: 5rem;
   }
+
+  /* Force 1 column on mobile for two-column inline style grids */
+  .grid[style*="gridTemplateColumns"],
+  .grid[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
 }
+
+@media (max-width: 600px) {
+  .container {
+    padding: 0 0.75rem !important;
+  }
+
+  .glass-card {
+    padding: 1rem !important;
+  }
+
+  .btn {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.85rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .btn-lg {
+    padding: 0.65rem 1rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* Tool Controls Bar Flex Layout */
+  .tool-controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .tool-controls-bar > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .w-full-mobile,
+  .mobile-full-btn {
+    width: 100% !important;
+  }
+}
+
+
+
+/* Global Search Match Highlight Styling */
+mark.search-match {
+  background-color: rgba(245, 158, 11, 0.45);
+  color: #ffffff;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+mark.search-match-active {
+  background-color: #f59e0b !important;
+  color: #000000 !important;
+  font-weight: bold;
+  outline: 2px solid #6366f1;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.9);
+}
+
+/* Code Folding Gutter & Indicator Styling */
+.code-fold-gutter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  user-select: none;
+  width: 44px;
+  min-width: 44px;
+  padding-right: 8px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  opacity: 0.75;
+}
+
+.fold-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  margin-left: 2px;
+  border-radius: 2px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.fold-btn:hover {
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.collapsed-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--primary);
+  border: 1px dashed rgba(99, 102, 241, 0.4);
+  padding: 0px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  margin-left: 8px;
+  user-select: none;
+  transition: all var(--transition-fast);
+}
+
+.collapsed-preview-badge:hover {
+  background: rgba(99, 102, 241, 0.35);
+  border-color: var(--primary);
+}
+

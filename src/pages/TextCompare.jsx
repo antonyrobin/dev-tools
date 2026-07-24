@@ -207,7 +207,7 @@ const TextCompare = () => {
   const modalDiffContainerRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // Requirement: Scroll to Comparison Result section when Compare button is clicked
+  // Scroll to Comparison Result section when Compare button is clicked
   const handleCompare = () => {
     const res = computeDiff(originalText, modifiedText);
     setDiffResult(res);
@@ -261,7 +261,7 @@ const TextCompare = () => {
     };
   }, [isFullScreen]);
 
-  // Handle Search Highlighting in Full View Diff Table
+  // Handle Cross-Span Search Highlighting in Full View Diff Table
   useEffect(() => {
     if (!isFullScreen || !modalDiffContainerRef.current) return;
 
@@ -278,84 +278,119 @@ const TextCompare = () => {
     });
 
     if (!searchQuery.trim()) {
-      requestAnimationFrame(() => {
-        setTotalMatches(0);
-        setCurrentMatchIndex(0);
-      });
+      setTotalMatches(0);
+      setCurrentMatchIndex(0);
       return;
     }
 
-    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escaped, 'gi');
-
     const textNodes = [];
-    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parent = node.parentNode;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('.line-num')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }, false);
+
     let node;
     while ((node = walk.nextNode())) {
-      if (node.parentNode && node.parentNode.classList.contains('line-num')) continue;
       textNodes.push(node);
     }
 
-    const createdMarks = [];
+    if (textNodes.length === 0) {
+      setTotalMatches(0);
+      setCurrentMatchIndex(0);
+      return;
+    }
 
-    textNodes.forEach((textNode) => {
-      const text = textNode.nodeValue;
-      if (!text) return;
-
-      let match;
-      regex.lastIndex = 0;
-      const matchesInNode = [];
-
-      while ((match = regex.exec(text)) !== null) {
-        matchesInNode.push({
-          index: match.index,
-          length: match[0].length,
-          text: match[0]
-        });
-      }
-
-      if (matchesInNode.length > 0) {
-        const parent = textNode.parentNode;
-        const frag = document.createDocumentFragment();
-        let lastIdx = 0;
-
-        matchesInNode.forEach((m) => {
-          if (m.index > lastIdx) {
-            frag.appendChild(document.createTextNode(text.substring(lastIdx, m.index)));
-          }
-
-          const mark = document.createElement('mark');
-          mark.className = 'search-match';
-          mark.textContent = m.text;
-          frag.appendChild(mark);
-          createdMarks.push(mark);
-
-          lastIdx = m.index + m.length;
-        });
-
-        if (lastIdx < text.length) {
-          frag.appendChild(document.createTextNode(text.substring(lastIdx)));
-        }
-
-        parent.replaceChild(frag, textNode);
-      }
+    let fullText = '';
+    const nodeMap = [];
+    textNodes.forEach((tn) => {
+      const start = fullText.length;
+      const text = tn.nodeValue || '';
+      fullText += text;
+      nodeMap.push({ node: tn, start, end: start + text.length, text });
     });
 
-    const count = createdMarks.length;
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
+    const matches = [];
+    let match;
+    while ((match = regex.exec(fullText)) !== null) {
+      if (match[0].length === 0) {
+        regex.lastIndex++;
+        continue;
+      }
+      matches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[0]
+      });
+    }
+
+    const count = matches.length;
+    setTotalMatches(count);
+
+    if (count === 0) {
+      setCurrentMatchIndex(0);
+      return;
+    }
+
+    const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
+    if (validIndex !== currentMatchIndex) {
+      setCurrentMatchIndex(validIndex);
+    }
+
+    const createdMarksPerMatch = Array.from({ length: count }, () => []);
+
+    nodeMap.forEach(({ node, start: nodeStart, end: nodeEnd, text }) => {
+      const overlapping = [];
+      matches.forEach((m, mIdx) => {
+        if (m.end > nodeStart && m.start < nodeEnd) {
+          const relStart = Math.max(0, m.start - nodeStart);
+          const relEnd = Math.min(text.length, m.end - nodeStart);
+          overlapping.push({ mIdx, relStart, relEnd });
+        }
+      });
+
+      if (overlapping.length === 0) return;
+
+      const parent = node.parentNode;
+      if (!parent) return;
+
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+
+      overlapping.forEach(({ mIdx, relStart, relEnd }) => {
+        if (relStart > lastIdx) {
+          frag.appendChild(document.createTextNode(text.substring(lastIdx, relStart)));
+        }
+
+        const mark = document.createElement('mark');
+        mark.className = 'search-match';
+        mark.setAttribute('data-match-idx', String(mIdx));
+        if (mIdx === validIndex) {
+          mark.classList.add('search-match-active');
+        }
+        mark.textContent = text.substring(relStart, relEnd);
+        frag.appendChild(mark);
+        createdMarksPerMatch[mIdx].push(mark);
+
+        lastIdx = relEnd;
+      });
+
+      if (lastIdx < text.length) {
+        frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+      }
+
+      parent.replaceChild(frag, node);
+    });
 
     requestAnimationFrame(() => {
-      setTotalMatches(count);
-      if (count > 0) {
-        const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
-        if (validIndex !== currentMatchIndex) {
-          setCurrentMatchIndex(validIndex);
-        }
-        if (createdMarks[validIndex]) {
-          createdMarks[validIndex].classList.add('search-match-active');
-          createdMarks[validIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      } else {
-        setCurrentMatchIndex(0);
+      const activeMarks = createdMarksPerMatch[validIndex];
+      if (activeMarks && activeMarks[0]) {
+        activeMarks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     });
   }, [searchQuery, currentMatchIndex, isFullScreen, diffResult]);
@@ -473,37 +508,37 @@ const TextCompare = () => {
 
       {/* Control Buttons & Inputs */}
       <div className="glass-card p-6 mb-6" style={{ padding: '1.5rem' }}>
-        {/* Requirement 2: Re-ordered Control Bar - Options on Left, Compare Texts button on Far Right */}
+        {/* Responsive Control Bar */}
         <div className="flex justify-between items-center mb-4 block-mobile gap-3">
-          <div className="flex gap-2 items-center flex-wrap">
-            <button className="btn btn-ghost" onClick={handleLoadSample}>
-              <Sparkles size={16} /> Sample
+          <div className="tool-controls-bar">
+            <button className="btn btn-ghost btn-sm" onClick={handleLoadSample}>
+              <Sparkles size={16} /> <span>Sample</span>
             </button>
-            <button className="btn btn-outline" onClick={handleSwap} title="Swap Original and Modified">
-              <ArrowLeftRight size={16} /> Swap
+            <button className="btn btn-outline btn-sm" onClick={handleSwap} title="Swap Original and Modified">
+              <ArrowLeftRight size={16} /> <span>Swap</span>
             </button>
             <UploadButton 
-              label="Upload Original" 
+              label="Upload Orig" 
               className="btn btn-outline btn-sm"
               onFileLoaded={(res) => setOriginalText(res.content)}
             />
             <UploadButton 
-              label="Upload Modified" 
+              label="Upload Mod" 
               className="btn btn-outline btn-sm"
               onFileLoaded={(res) => setModifiedText(res.content)}
             />
-            <button className="btn btn-ghost" onClick={handleClear} style={{ color: 'var(--danger)' }}>
-              <Trash2 size={16} /> Clear
+            <button className="btn btn-ghost btn-sm" onClick={handleClear} style={{ color: 'var(--danger)' }}>
+              <Trash2 size={16} /> <span>Clear</span>
             </button>
           </div>
 
-          <div className="flex items-center">
-            {/* Primary Action Button placed on Right Side */}
-            <button className="btn btn-primary btn-lg" onClick={handleCompare}>
+          <div className="flex items-center w-full-mobile">
+            <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleCompare}>
               <GitCompare size={18} /> Compare Texts
             </button>
           </div>
         </div>
+
 
         {/* Text Area Inputs */}
         <div className="grid grid-cols-2 gap-4 text-inputs-grid">
@@ -541,13 +576,12 @@ const TextCompare = () => {
         </div>
       </div>
 
-      {/* Requirement 1: Comparison Result Section with auto-scroll focus */}
+      {/* Comparison Result Section */}
       {diffResult.rows.length > 0 && (
         <div className="glass-card p-6" style={{ padding: '1.5rem' }} ref={resultRef}>
           <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <h3 className="mb-0" style={{ fontSize: '1.25rem' }}>Comparison Result (Side-by-Side View)</h3>
-              {/* Requirement 3: Full Screen View Button for Comparison Result */}
               <button 
                 className="btn btn-ghost btn-sm flex items-center gap-1"
                 onClick={() => setIsFullScreen(true)}
@@ -559,7 +593,7 @@ const TextCompare = () => {
               </button>
             </div>
 
-            <div className="flex gap-3 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <span className="diff-pill diff-pill-add">
                 <PlusCircle size={14} /> {diffResult.additionsCount} Additions
               </span>
@@ -577,7 +611,7 @@ const TextCompare = () => {
         </div>
       )}
 
-      {/* Requirement 3: Full Screen View Overlay for Comparison Result with Find Feature */}
+      {/* Full Screen View Overlay for Comparison Result */}
       {isFullScreen && createPortal(
         <div className="fullscreen-overlay-page">
           <div className="fullscreen-header">
@@ -585,7 +619,7 @@ const TextCompare = () => {
             <div className="fullscreen-title-area">
               <GitCompare size={20} style={{ color: 'var(--accent)' }} />
               <span style={{ fontSize: '1rem', fontWeight: 700 }}>Comparison Result</span>
-              <div className="flex gap-2 ml-2">
+              <div className="flex gap-1 ml-2">
                 <span className="diff-pill diff-pill-add" style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}>
                   +{diffResult.additionsCount}
                 </span>
@@ -658,7 +692,7 @@ const TextCompare = () => {
             </div>
           </div>
 
-          {/* Full Screen Diff Body - SINGLE SCROLLBAR */}
+          {/* Full Screen Diff Body */}
           <div className="fullscreen-code-body p-6">
             {renderDiffTable(modalDiffContainerRef)}
           </div>
@@ -673,7 +707,6 @@ const TextCompare = () => {
           gap: 1.5rem;
         }
 
-        /* Fix text color: Ensure bright white text in input textareas */
         .code-textarea-input {
           font-family: var(--font-mono);
           font-size: 0.9rem;
@@ -802,7 +835,6 @@ const TextCompare = () => {
           border-radius: 2px;
         }
 
-        /* Full Screen Cover Styling */
         .fullscreen-overlay-page {
           position: fixed;
           top: 0;
@@ -924,21 +956,6 @@ const TextCompare = () => {
           border-radius: var(--radius-sm);
         }
 
-        mark.search-match {
-          background-color: rgba(245, 158, 11, 0.45);
-          color: #ffffff;
-          border-radius: 2px;
-          padding: 0 2px;
-        }
-
-        mark.search-match-active {
-          background-color: #f59e0b !important;
-          color: #000000 !important;
-          font-weight: bold;
-          outline: 2px solid #6366f1;
-          box-shadow: 0 0 12px rgba(99, 102, 241, 0.9);
-        }
-
         @media (max-width: 820px) {
           .fullscreen-header {
             display: grid;
@@ -973,6 +990,16 @@ const TextCompare = () => {
           .left-pane {
             border-right: none;
             border-bottom: 1px solid var(--border-light);
+          }
+
+          .block-mobile {
+            flex-direction: column;
+            gap: 0.75rem;
+            align-items: stretch !important;
+          }
+
+          .mobile-full-btn {
+            width: 100%;
           }
         }
       `}</style>
