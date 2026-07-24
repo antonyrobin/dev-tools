@@ -510,34 +510,35 @@ const TextCompare = () => {
       <div className="glass-card p-6 mb-6" style={{ padding: '1.5rem' }}>
         {/* Responsive Control Bar */}
         <div className="flex justify-between items-center mb-4 block-mobile gap-3">
-          <div className="flex gap-2 items-center flex-wrap">
-            <button className="btn btn-ghost" onClick={handleLoadSample}>
-              <Sparkles size={16} /> Sample
+          <div className="tool-controls-bar">
+            <button className="btn btn-ghost btn-sm" onClick={handleLoadSample}>
+              <Sparkles size={16} /> <span>Sample</span>
             </button>
-            <button className="btn btn-outline" onClick={handleSwap} title="Swap Original and Modified">
-              <ArrowLeftRight size={16} /> Swap
+            <button className="btn btn-outline btn-sm" onClick={handleSwap} title="Swap Original and Modified">
+              <ArrowLeftRight size={16} /> <span>Swap</span>
             </button>
             <UploadButton 
-              label="Upload Original" 
+              label="Upload Orig" 
               className="btn btn-outline btn-sm"
               onFileLoaded={(res) => setOriginalText(res.content)}
             />
             <UploadButton 
-              label="Upload Modified" 
+              label="Upload Mod" 
               className="btn btn-outline btn-sm"
               onFileLoaded={(res) => setModifiedText(res.content)}
             />
-            <button className="btn btn-ghost" onClick={handleClear} style={{ color: 'var(--danger)' }}>
-              <Trash2 size={16} /> Clear
+            <button className="btn btn-ghost btn-sm" onClick={handleClear} style={{ color: 'var(--danger)' }}>
+              <Trash2 size={16} /> <span>Clear</span>
             </button>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center w-full-mobile">
             <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleCompare}>
               <GitCompare size={18} /> Compare Texts
             </button>
           </div>
         </div>
+
 
         {/* Text Area Inputs */}
         <div className="grid grid-cols-2 gap-4 text-inputs-grid">

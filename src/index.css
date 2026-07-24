@@ -361,6 +361,47 @@ a:hover {
   }
 }
 
+@media (max-width: 600px) {
+  .container {
+    padding: 0 0.75rem !important;
+  }
+
+  .glass-card {
+    padding: 1rem !important;
+  }
+
+  .btn {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.85rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .btn-lg {
+    padding: 0.65rem 1rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* Tool Controls Bar Flex Layout */
+  .tool-controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .tool-controls-bar > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .w-full-mobile,
+  .mobile-full-btn {
+    width: 100% !important;
+  }
+}
+
+
+
 /* Global Search Match Highlight Styling */
 mark.search-match {
   background-color: rgba(245, 158, 11, 0.45);

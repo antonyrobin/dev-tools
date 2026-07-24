@@ -50,7 +50,7 @@ const Navbar = () => {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="mobile-menu glass">
+        <div className="mobile-menu">
           {navLinks.map((link) => (
             <Link
               key={link.path}
@@ -58,11 +58,22 @@ const Navbar = () => {
               className={`mobile-link ${location.pathname === link.path ? 'active' : ''}`}
               onClick={() => setIsOpen(false)}
             >
-              {link.name}
+              <span>{link.name}</span>
             </Link>
           ))}
+          <a 
+            href="https://github.com/antonyrobin/dev-tools" 
+            target="_blank" 
+            rel="noreferrer" 
+            className="btn btn-outline btn-github mobile-github-btn"
+            onClick={() => setIsOpen(false)}
+          >
+            <Sparkles size={18} />
+            Star on GitHub
+          </a>
         </div>
       )}
+
     </nav>
   );
 };

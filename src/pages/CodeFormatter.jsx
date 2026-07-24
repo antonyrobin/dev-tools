@@ -613,8 +613,8 @@ const CodeFormatter = () => {
       <div className="glass-card p-6" style={{ padding: '1.5rem' }}>
         {/* Responsive Controls Toolbar */}
         <div className="flex justify-between items-center mb-4 block-mobile gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="form-group mb-0" style={{ minWidth: '180px', flex: '1 1 auto' }}>
+          <div className="tool-controls-bar">
+            <div className="form-group mb-0" style={{ minWidth: '140px', flex: '1 1 auto' }}>
               <select 
                 className="form-select"
                 value={language}
@@ -626,7 +626,7 @@ const CodeFormatter = () => {
               </select>
             </div>
             <button 
-              className="btn btn-ghost" 
+              className="btn btn-ghost btn-sm" 
               onClick={() => {
                 const sample = defaultSampleCode[language] || '';
                 setInputCode(sample);
@@ -636,14 +636,11 @@ const CodeFormatter = () => {
               }}
               title="Reset Sample Code"
             >
-              <RotateCcw size={16} /> Sample
+              <RotateCcw size={16} /> <span>Sample</span>
             </button>
-          </div>
-
-          <div className="flex gap-2 flex-wrap items-center">
             <UploadButton 
-              label="Upload File"
-              className="btn btn-outline"
+              label="Upload"
+              className="btn btn-outline btn-sm"
               onFileLoaded={(res) => {
                 setInputCode(res.content);
                 if (res.detectedLanguage) {
@@ -651,16 +648,20 @@ const CodeFormatter = () => {
                 }
               }}
             />
-            <button className="btn btn-outline" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
-              {copied ? <Check size={18} className="text-success" /> : <Copy size={18} />}
-              {copied ? 'Copied' : 'Copy'}
+            <button className="btn btn-outline btn-sm" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
+              {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
-            <button className="btn btn-primary" onClick={handleFormat} disabled={!inputCode}>
+          </div>
+
+          <div className="flex items-center w-full-mobile">
+            <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleFormat} disabled={!inputCode}>
               <Play size={18} />
-              Format Code
+              <span>Format Code</span>
             </button>
           </div>
         </div>
+
 
         {error && (
           <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
