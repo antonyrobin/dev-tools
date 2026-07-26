@@ -13,6 +13,7 @@ import CodeOptimizer from './pages/CodeOptimizer';
 import QrGenerator from './pages/QrGenerator';
 import BarcodeGenerator from './pages/BarcodeGenerator';
 import TextCompare from './pages/TextCompare';
+import ConvertPage from './pages/ConvertPage';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 
@@ -23,6 +24,7 @@ function App() {
       <div className="page-container">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/convert" element={<ConvertPage />} />
           <Route path="/format" element={<CodeFormatter />} />
           <Route path="/compare" element={<TextCompare />} />
           <Route path="/compile" element={<CodeCompiler />} />
