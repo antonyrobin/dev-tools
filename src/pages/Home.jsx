@@ -1,11 +1,18 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Code, Zap, FileJson, Cpu, QrCode, ShieldCheck, ArrowRight, AlignJustify, GitCompare } from 'lucide-react';
+import { Code, Zap, FileJson, Cpu, QrCode, ShieldCheck, ArrowRight, AlignJustify, GitCompare, FileText } from 'lucide-react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import usePageTitle from '../hooks/usePageTitle';
 import './Home.css';
 
 const features = [
+  {
+    icon: <FileText size={24} />,
+    title: "Document Converter",
+    description: "Convert Word, PDF, Excel, Text, Markdown, HTML, JSON, and Images with drag & drop & rich text editing.",
+    path: "/convert",
+    color: "var(--primary)"
+  },
   {
     icon: <FileJson size={24} />,
     title: "Code Formatter",

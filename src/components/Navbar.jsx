@@ -11,6 +11,7 @@ const Navbar = () => {
 
   const navLinks = [
     { name: 'Home', path: '/' },
+    { name: 'Convert', path: '/convert' },
     { name: 'Format', path: '/format' },
     { name: 'Compare', path: '/compare' },
     { name: 'QR Code', path: '/qr-code' },
