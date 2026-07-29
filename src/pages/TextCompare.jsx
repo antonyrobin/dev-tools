@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { GitCompare, ArrowLeftRight, Trash2, PlusCircle, MinusCircle, AlertCircle, Sparkles, Maximize2, X, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { GitCompare, ArrowLeftRight, Trash2, PlusCircle, MinusCircle, AlertCircle, Sparkles, Maximize2, X, Search, ChevronUp, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
 
 const sampleOriginal = `{
@@ -31,7 +31,7 @@ const sampleModified = `{
   "author": "DevTools Team"
 }`;
 
-// LCS Diff Algorithm
+// LCS Diff Algorithm with precomputed inline word diffs for high performance
 function computeDiff(origText, modText) {
   const origLines = origText.split('\n');
   const modLines = modText.split('\n');
@@ -101,10 +101,13 @@ function computeDiff(origText, modText) {
           const rem = removes[m];
           const add = adds[m];
           if (rem && add) {
+            const inline = computeInlineWordDiff(rem.orig, add.mod);
             rows.push({
               type: 'modify',
               left: { lineNum: rem.origIndex + 1, content: rem.orig },
-              right: { lineNum: add.modIndex + 1, content: add.mod }
+              right: { lineNum: add.modIndex + 1, content: add.mod },
+              leftTokens: inline.leftTokens,
+              rightTokens: inline.rightTokens
             });
             modificationsCount++;
           } else if (rem) {
@@ -191,6 +194,143 @@ function computeInlineWordDiff(origStr, modStr) {
   return { leftTokens: leftResult, rightTokens: rightResult };
 }
 
+/**
+ * Pure React text search & highlighting helper for plain text
+ */
+function renderTextWithMatches(text, paneMatches, activeMatchIdx) {
+  if (!text) return '';
+  if (!paneMatches || paneMatches.length === 0) return text;
+
+  const elements = [];
+  let lastIdx = 0;
+  const sorted = [...paneMatches].sort((a, b) => a.startCol - b.startCol);
+
+  sorted.forEach((m) => {
+    if (m.startCol > lastIdx) {
+      elements.push(text.substring(lastIdx, m.startCol));
+    }
+    const isActive = m.matchIndex === activeMatchIdx;
+    elements.push(
+      <mark
+        key={`m-${m.matchIndex}-${m.startCol}`}
+        className={isActive ? 'search-match search-match-active' : 'search-match'}
+        data-match-idx={m.matchIndex}
+      >
+        {text.substring(m.startCol, m.endCol)}
+      </mark>
+    );
+    lastIdx = m.endCol;
+  });
+
+  if (lastIdx < text.length) {
+    elements.push(text.substring(lastIdx));
+  }
+
+  return elements;
+}
+
+/**
+ * Pure React text search & highlighting helper for inline word diff tokens
+ */
+function renderTokensWithMatches(tokens, paneMatches, activeMatchIdx, tokenTypeClass) {
+  if (!tokens) return null;
+  if (!paneMatches || paneMatches.length === 0) {
+    return tokens.map((tok, i) => (
+      <span key={i} className={tok.type === tokenTypeClass ? (tokenTypeClass === 'remove' ? 'inline-word-remove' : 'inline-word-add') : ''}>
+        {tok.text}
+      </span>
+    ));
+  }
+
+  let currentCol = 0;
+  return tokens.map((tok, tokIdx) => {
+    const tokStart = currentCol;
+    const tokEnd = currentCol + tok.text.length;
+    currentCol = tokEnd;
+
+    const overlapping = paneMatches.filter(m => m.endCol > tokStart && m.startCol < tokEnd);
+    const tokClass = tok.type === tokenTypeClass ? (tokenTypeClass === 'remove' ? 'inline-word-remove' : 'inline-word-add') : '';
+
+    if (overlapping.length === 0) {
+      return (
+        <span key={tokIdx} className={tokClass}>
+          {tok.text}
+        </span>
+      );
+    }
+
+    const parts = [];
+    let lastIdx = 0;
+    overlapping.forEach(m => {
+      const relStart = Math.max(0, m.startCol - tokStart);
+      const relEnd = Math.min(tok.text.length, m.endCol - tokStart);
+
+      if (relStart > lastIdx) {
+        parts.push(tok.text.substring(lastIdx, relStart));
+      }
+      const isActive = m.matchIndex === activeMatchIdx;
+      parts.push(
+        <mark
+          key={`tm-${m.matchIndex}-${relStart}`}
+          className={isActive ? 'search-match search-match-active' : 'search-match'}
+          data-match-idx={m.matchIndex}
+        >
+          {tok.text.substring(relStart, relEnd)}
+        </mark>
+      );
+      lastIdx = relEnd;
+    });
+
+    if (lastIdx < tok.text.length) {
+      parts.push(tok.text.substring(lastIdx));
+    }
+
+    return (
+      <span key={tokIdx} className={tokClass}>
+        {parts}
+      </span>
+    );
+  });
+}
+
+/**
+ * Memoized Diff Row Component to prevent un-needed re-renders during search
+ */
+const DiffRow = React.memo(({ row, idx, leftMatches, rightMatches, currentMatchIndex, isFocused }) => {
+  let rowClass = 'diff-row-equal';
+  if (row.type === 'add') rowClass = 'diff-row-add';
+  if (row.type === 'remove') rowClass = 'diff-row-remove';
+  if (row.type === 'modify') rowClass = 'diff-row-modify';
+
+  return (
+    <div id={`diff-row-${idx}`} className={`diff-split-row ${rowClass} ${isFocused ? 'diff-row-focused' : ''}`}>
+      {/* Left Pane (Original) */}
+      <div className={`diff-pane left-pane ${row.type === 'remove' ? 'pane-removed' : row.type === 'modify' ? 'pane-modified' : ''}`}>
+        <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
+        <span className="line-content">
+          {row.leftTokens ? (
+            renderTokensWithMatches(row.leftTokens, leftMatches, currentMatchIndex, 'remove')
+          ) : (
+            renderTextWithMatches(row.left ? row.left.content : '', leftMatches, currentMatchIndex)
+          )}
+        </span>
+      </div>
+
+      {/* Right Pane (Modified) */}
+      <div className={`diff-pane right-pane ${row.type === 'add' ? 'pane-added' : row.type === 'modify' ? 'pane-modified' : ''}`}>
+        <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
+        <span className="line-content">
+          {row.rightTokens ? (
+            renderTokensWithMatches(row.rightTokens, rightMatches, currentMatchIndex, 'add')
+          ) : (
+            renderTextWithMatches(row.right ? row.right.content : '', rightMatches, currentMatchIndex)
+          )}
+        </span>
+      </div>
+    </div>
+  );
+});
+
 const TextCompare = () => {
   usePageTitle('Text Comparison');
   const [originalText, setOriginalText] = useState(sampleOriginal);
@@ -198,24 +338,202 @@ const TextCompare = () => {
   const [diffResult, setDiffResult] = useState(computeDiff(sampleOriginal, sampleModified));
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Search states for full view
+  // Search states with 200ms debounce
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
-  const [totalMatches, setTotalMatches] = useState(0);
+
+  // Next / Previous Modification Change navigation states (Full view only)
+  const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
 
   const resultRef = useRef(null);
   const modalDiffContainerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const fullscreenCodeBodyRef = useRef(null);
 
-  // Scroll to Comparison Result section when Compare button is clicked
+  // Debounce search query input to prevent UI lag on large text
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Compute contiguous modification blocks (changes)
+  const changeBlocks = useMemo(() => {
+    if (!diffResult.rows || diffResult.rows.length === 0) return [];
+    const blocks = [];
+    let currentBlock = null;
+
+    diffResult.rows.forEach((row, rowIdx) => {
+      if (row.type !== 'equal') {
+        if (!currentBlock) {
+          currentBlock = { startRowIdx: rowIdx, endRowIdx: rowIdx, type: row.type };
+          blocks.push(currentBlock);
+        } else {
+          currentBlock.endRowIdx = rowIdx;
+        }
+      } else {
+        currentBlock = null;
+      }
+    });
+
+    return blocks;
+  }, [diffResult.rows]);
+
+  // Compute search matches efficiently without DOM mutation (handles special characters like :, -, * properly)
+  const searchMatches = useMemo(() => {
+    if (!debouncedSearchQuery.trim()) return [];
+    const query = debouncedSearchQuery;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let regex;
+    try {
+      regex = new RegExp(escaped, 'gi');
+    } catch {
+      return [];
+    }
+
+    const matches = [];
+    let matchCount = 0;
+
+    diffResult.rows.forEach((row, rowIdx) => {
+      if (row.left?.content) {
+        const text = row.left.content;
+        regex.lastIndex = 0;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+          if (m[0].length === 0) { regex.lastIndex++; continue; }
+          matches.push({
+            matchIndex: matchCount++,
+            rowIdx,
+            side: 'left',
+            startCol: m.index,
+            endCol: m.index + m[0].length,
+            text: m[0]
+          });
+        }
+      }
+
+      if (row.right?.content) {
+        const text = row.right.content;
+        regex.lastIndex = 0;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+          if (m[0].length === 0) { regex.lastIndex++; continue; }
+          matches.push({
+            matchIndex: matchCount++,
+            rowIdx,
+            side: 'right',
+            startCol: m.index,
+            endCol: m.index + m[0].length,
+            text: m[0]
+          });
+        }
+      }
+    });
+
+    return matches;
+  }, [diffResult.rows, debouncedSearchQuery]);
+
+  // Group search matches by rowIdx and side for O(1) render lookup
+  const matchesByRowAndSide = useMemo(() => {
+    const map = {};
+    searchMatches.forEach((m) => {
+      const key = `${m.rowIdx}-${m.side}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(m);
+    });
+    return map;
+  }, [searchMatches]);
+
+  const totalMatches = searchMatches.length;
+
+  // Reset search match index when query or diff changes
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+  }, [debouncedSearchQuery, diffResult]);
+
+  useEffect(() => {
+    setCurrentChangeIndex(0);
+  }, [diffResult]);
+
+  // Scroll to active search match inside modal scroll container
+  useEffect(() => {
+    if (totalMatches === 0) return;
+    const validIdx = Math.min(Math.max(0, currentMatchIndex), totalMatches - 1);
+    const activeMatch = searchMatches[validIdx];
+    if (activeMatch) {
+      requestAnimationFrame(() => {
+        const container = fullscreenCodeBodyRef.current;
+        const markEl = container ? container.querySelector(`mark[data-match-idx="${validIdx}"]`) : null;
+        const targetEl = markEl || document.getElementById(`diff-row-${activeMatch.rowIdx}`);
+
+        if (container && targetEl) {
+          const containerRect = container.getBoundingClientRect();
+          const elRect = targetEl.getBoundingClientRect();
+          const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+          const targetScrollTop = Math.max(0, relativeTop - 30);
+
+          container.scrollTo({
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        }
+      });
+    }
+  }, [currentMatchIndex, totalMatches, searchMatches]);
+
+  // Scroll to target modification change block cleanly inside full view scroll container
+  const scrollToChangeBlock = useCallback((blockIdx) => {
+    if (!changeBlocks || changeBlocks.length === 0 || blockIdx < 0 || blockIdx >= changeBlocks.length) return;
+    const targetRowIdx = changeBlocks[blockIdx].startRowIdx;
+    requestAnimationFrame(() => {
+      const container = fullscreenCodeBodyRef.current;
+      const rowEl = document.getElementById(`diff-row-${targetRowIdx}`);
+      if (!container || !rowEl) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const rowRect = rowEl.getBoundingClientRect();
+      const relativeTop = rowRect.top - containerRect.top + container.scrollTop;
+      const targetScrollTop = Math.max(0, relativeTop - 30);
+
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
+    });
+  }, [changeBlocks]);
+
+  // Auto-focus Change 1 (index 0) upon opening Full View
+  useEffect(() => {
+    if (isFullScreen && changeBlocks.length > 0) {
+      setCurrentChangeIndex(0);
+      const timer = setTimeout(() => {
+        scrollToChangeBlock(0);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullScreen, changeBlocks, scrollToChangeBlock]);
+
+  const handleNextChange = () => {
+    if (changeBlocks.length === 0) return;
+    const nextIdx = Math.min(currentChangeIndex + 1, changeBlocks.length - 1);
+    setCurrentChangeIndex(nextIdx);
+    scrollToChangeBlock(nextIdx);
+  };
+
+  const handlePrevChange = () => {
+    if (changeBlocks.length === 0) return;
+    const prevIdx = Math.max(0, currentChangeIndex - 1);
+    setCurrentChangeIndex(prevIdx);
+    scrollToChangeBlock(prevIdx);
+  };
+
+  // Compute diff and open full view popup by default on compare
   const handleCompare = () => {
     const res = computeDiff(originalText, modifiedText);
     setDiffResult(res);
-    setTimeout(() => {
-      if (resultRef.current) {
-        resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
+    setIsFullScreen(true);
   };
 
   const handleSwap = () => {
@@ -240,14 +558,15 @@ const TextCompare = () => {
   const closeFullScreen = useCallback(() => {
     setIsFullScreen(false);
     setSearchQuery('');
-    setTotalMatches(0);
     setCurrentMatchIndex(0);
   }, []);
 
-  // Lock body scroll on Full Screen
+  // Lock body & documentElement scroll on Full Screen
   useEffect(() => {
     if (isFullScreen) {
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      window.scrollTo(0, 0);
       setTimeout(() => {
         if (searchInputRef.current) {
           searchInputRef.current.focus();
@@ -255,145 +574,13 @@ const TextCompare = () => {
       }, 100);
     } else {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     };
   }, [isFullScreen]);
-
-  // Handle Cross-Span Search Highlighting in Full View Diff Table
-  useEffect(() => {
-    if (!isFullScreen || !modalDiffContainerRef.current) return;
-
-    const container = modalDiffContainerRef.current;
-
-    // Reset previous search marks
-    const existingMarks = container.querySelectorAll('mark.search-match');
-    existingMarks.forEach((mark) => {
-      const parent = mark.parentNode;
-      if (parent) {
-        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
-        parent.normalize();
-      }
-    });
-
-    if (!searchQuery.trim()) {
-      setTotalMatches(0);
-      setCurrentMatchIndex(0);
-      return;
-    }
-
-    const textNodes = [];
-    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-      acceptNode: (node) => {
-        const parent = node.parentNode;
-        if (!parent) return NodeFilter.FILTER_REJECT;
-        if (parent.closest('.line-num')) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    }, false);
-
-    let node;
-    while ((node = walk.nextNode())) {
-      textNodes.push(node);
-    }
-
-    if (textNodes.length === 0) {
-      setTotalMatches(0);
-      setCurrentMatchIndex(0);
-      return;
-    }
-
-    let fullText = '';
-    const nodeMap = [];
-    textNodes.forEach((tn) => {
-      const start = fullText.length;
-      const text = tn.nodeValue || '';
-      fullText += text;
-      nodeMap.push({ node: tn, start, end: start + text.length, text });
-    });
-
-    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escaped, 'gi');
-    const matches = [];
-    let match;
-    while ((match = regex.exec(fullText)) !== null) {
-      if (match[0].length === 0) {
-        regex.lastIndex++;
-        continue;
-      }
-      matches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[0]
-      });
-    }
-
-    const count = matches.length;
-    setTotalMatches(count);
-
-    if (count === 0) {
-      setCurrentMatchIndex(0);
-      return;
-    }
-
-    const validIndex = Math.min(Math.max(0, currentMatchIndex), count - 1);
-    if (validIndex !== currentMatchIndex) {
-      setCurrentMatchIndex(validIndex);
-    }
-
-    const createdMarksPerMatch = Array.from({ length: count }, () => []);
-
-    nodeMap.forEach(({ node, start: nodeStart, end: nodeEnd, text }) => {
-      const overlapping = [];
-      matches.forEach((m, mIdx) => {
-        if (m.end > nodeStart && m.start < nodeEnd) {
-          const relStart = Math.max(0, m.start - nodeStart);
-          const relEnd = Math.min(text.length, m.end - nodeStart);
-          overlapping.push({ mIdx, relStart, relEnd });
-        }
-      });
-
-      if (overlapping.length === 0) return;
-
-      const parent = node.parentNode;
-      if (!parent) return;
-
-      const frag = document.createDocumentFragment();
-      let lastIdx = 0;
-
-      overlapping.forEach(({ mIdx, relStart, relEnd }) => {
-        if (relStart > lastIdx) {
-          frag.appendChild(document.createTextNode(text.substring(lastIdx, relStart)));
-        }
-
-        const mark = document.createElement('mark');
-        mark.className = 'search-match';
-        mark.setAttribute('data-match-idx', String(mIdx));
-        if (mIdx === validIndex) {
-          mark.classList.add('search-match-active');
-        }
-        mark.textContent = text.substring(relStart, relEnd);
-        frag.appendChild(mark);
-        createdMarksPerMatch[mIdx].push(mark);
-
-        lastIdx = relEnd;
-      });
-
-      if (lastIdx < text.length) {
-        frag.appendChild(document.createTextNode(text.substring(lastIdx)));
-      }
-
-      parent.replaceChild(frag, node);
-    });
-
-    requestAnimationFrame(() => {
-      const activeMarks = createdMarksPerMatch[validIndex];
-      if (activeMarks && activeMarks[0]) {
-        activeMarks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    });
-  }, [searchQuery, currentMatchIndex, isFullScreen, diffResult]);
 
   const handleNextMatch = () => {
     if (totalMatches === 0) return;
@@ -435,67 +622,38 @@ const TextCompare = () => {
   }, [isFullScreen, searchQuery, closeFullScreen]);
 
   // Shared Diff Table Component
-  const renderDiffTable = (containerRef = null) => (
-    <div className="diff-split-container" ref={containerRef}>
-      <div className="diff-split-header">
-        <div className="diff-split-col-header">Original Text</div>
-        <div className="diff-split-col-header">Modified Text</div>
+  const renderDiffTable = (containerRef = null) => {
+    const activeChangeBlock = changeBlocks[currentChangeIndex];
+
+    return (
+      <div className="diff-split-container" ref={containerRef}>
+        <div className="diff-split-header">
+          <div className="diff-split-col-header">Original Text</div>
+          <div className="diff-split-col-header">Modified Text</div>
+        </div>
+
+        <div className="diff-split-rows">
+          {diffResult.rows.map((row, idx) => {
+            const isFocused = isFullScreen && activeChangeBlock && idx >= activeChangeBlock.startRowIdx && idx <= activeChangeBlock.endRowIdx;
+            const leftMatches = matchesByRowAndSide[`${idx}-left`];
+            const rightMatches = matchesByRowAndSide[`${idx}-right`];
+
+            return (
+              <DiffRow
+                key={idx}
+                row={row}
+                idx={idx}
+                leftMatches={leftMatches}
+                rightMatches={rightMatches}
+                currentMatchIndex={currentMatchIndex}
+                isFocused={isFocused}
+              />
+            );
+          })}
+        </div>
       </div>
-
-      <div className="diff-split-rows">
-        {diffResult.rows.map((row, idx) => {
-          let rowClass = 'diff-row-equal';
-          if (row.type === 'add') rowClass = 'diff-row-add';
-          if (row.type === 'remove') rowClass = 'diff-row-remove';
-          if (row.type === 'modify') rowClass = 'diff-row-modify';
-
-          let leftTokens = null;
-          let rightTokens = null;
-          if (row.type === 'modify' && row.left && row.right) {
-            const inline = computeInlineWordDiff(row.left.content, row.right.content);
-            leftTokens = inline.leftTokens;
-            rightTokens = inline.rightTokens;
-          }
-
-          return (
-            <div key={idx} className={`diff-split-row ${rowClass}`}>
-              {/* Left Pane (Original) */}
-              <div className={`diff-pane left-pane ${row.type === 'remove' ? 'pane-removed' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-                <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
-                <span className="line-content">
-                  {leftTokens ? (
-                    leftTokens.map((tok, i) => (
-                      <span key={i} className={tok.type === 'remove' ? 'inline-word-remove' : ''}>
-                        {tok.text}
-                      </span>
-                    ))
-                  ) : (
-                    row.left ? row.left.content : ''
-                  )}
-                </span>
-              </div>
-
-              {/* Right Pane (Modified) */}
-              <div className={`diff-pane right-pane ${row.type === 'add' ? 'pane-added' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-                <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
-                <span className="line-content">
-                  {rightTokens ? (
-                    rightTokens.map((tok, i) => (
-                      <span key={i} className={tok.type === 'add' ? 'inline-word-add' : ''}>
-                        {tok.text}
-                      </span>
-                    ))
-                  ) : (
-                    row.right ? row.right.content : ''
-                  )}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
@@ -593,6 +751,7 @@ const TextCompare = () => {
               </button>
             </div>
 
+            {/* Change Pills */}
             <div className="flex gap-2 items-center flex-wrap">
               <span className="diff-pill diff-pill-add">
                 <PlusCircle size={14} /> {diffResult.additionsCount} Additions
@@ -663,7 +822,7 @@ const TextCompare = () => {
                 )}
               </div>
 
-              {/* Navigation Up & Down Arrows */}
+              {/* Navigation Up & Down Arrows for Search */}
               <div className="flex items-center gap-1">
                 <button 
                   className="btn btn-ghost btn-xs search-nav-btn"
@@ -684,8 +843,32 @@ const TextCompare = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons: Modification Nav & Close */}
             <div className="fullscreen-actions">
+              {changeBlocks.length > 0 && (
+                <div className="flex items-center gap-1 mr-2 nav-change-group" style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+                  <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600, marginRight: '0.2rem' }}>
+                    Change {currentChangeIndex + 1}/{changeBlocks.length}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs search-nav-btn"
+                    onClick={handlePrevChange}
+                    disabled={currentChangeIndex === 0}
+                    title="Previous modification (Up)"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-xs search-nav-btn"
+                    onClick={handleNextChange}
+                    disabled={currentChangeIndex === changeBlocks.length - 1}
+                    title="Next modification (Down)"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
+              )}
+
               <button className="btn btn-ghost btn-sm close-modal-btn" onClick={closeFullScreen} title="Close Fullscreen (Esc)">
                 <X size={20} />
               </button>
@@ -693,7 +876,7 @@ const TextCompare = () => {
           </div>
 
           {/* Full Screen Diff Body */}
-          <div className="fullscreen-code-body p-6">
+          <div className="fullscreen-code-body p-6" ref={fullscreenCodeBodyRef}>
             {renderDiffTable(modalDiffContainerRef)}
           </div>
         </div>,
@@ -775,6 +958,14 @@ const TextCompare = () => {
           grid-template-columns: 1fr 1fr;
           border-bottom: 1px solid rgba(255, 255, 255, 0.03);
           line-height: 1.5;
+          transition: background 0.2s ease, outline 0.2s ease;
+        }
+
+        .diff-row-focused {
+          outline: 2px solid var(--accent, #6366f1);
+          outline-offset: -2px;
+          box-shadow: inset 0 0 16px rgba(99, 102, 241, 0.4);
+          background: rgba(99, 102, 241, 0.18) !important;
         }
 
         .diff-pane {
@@ -841,8 +1032,8 @@ const TextCompare = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           max-width: 100%;
           max-height: 100%;
           background: #0a0a0f;
