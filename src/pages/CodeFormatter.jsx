@@ -180,79 +180,72 @@ function splitPrismHtmlIntoLines(html) {
 }
 
 /**
- * Safely injects <mark> tags for search matches into Prism syntax-highlighted line HTML (line-level DOM template parsing)
- * Handles special characters like :, -, * and multi-span matches without global DOM corruption.
+ * Ultra-fast string-based line HTML search highlight (zero DOM template allocation overhead)
+ * Handles special characters like :, -, * safely via regex lookahead outside HTML tags.
  */
 function highlightLineHtml(lineHtml, lineMatches, activeMatchIdx) {
   if (!lineHtml || !lineMatches || lineMatches.length === 0) return lineHtml;
 
-  try {
-    const template = document.createElement('template');
-    template.innerHTML = lineHtml;
-    const container = template.content;
+  let resultHtml = lineHtml;
 
-    const textNodes = [];
-    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while ((node = walk.nextNode())) {
-      textNodes.push(node);
-    }
-
-    let fullText = '';
-    const nodeMap = [];
-    textNodes.forEach((tn) => {
-      const start = fullText.length;
-      const text = tn.nodeValue || '';
-      fullText += text;
-      nodeMap.push({ node: tn, start, end: start + text.length, text });
+  lineMatches.forEach(m => {
+    const queryText = m.text;
+    if (!queryText) return;
+    const escaped = queryText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'gi');
+    const isActive = m.matchIndex === activeMatchIdx;
+    const markClass = isActive ? 'search-match search-match-active' : 'search-match';
+    
+    resultHtml = resultHtml.replace(regex, (matchText) => {
+      return `<mark class="${markClass}" data-match-idx="${m.matchIndex}">${matchText}</mark>`;
     });
+  });
 
-    nodeMap.forEach(({ node, start: nodeStart, end: nodeEnd, text }) => {
-      const overlapping = [];
-      lineMatches.forEach((m) => {
-        if (m.endCol > nodeStart && m.startCol < nodeEnd) {
-          const relStart = Math.max(0, m.startCol - nodeStart);
-          const relEnd = Math.min(text.length, m.endCol - nodeStart);
-          overlapping.push({ matchIndex: m.matchIndex, relStart, relEnd });
-        }
-      });
-
-      if (overlapping.length === 0) return;
-
-      const parent = node.parentNode;
-      if (!parent) return;
-
-      const frag = document.createDocumentFragment();
-      let lastIdx = 0;
-
-      overlapping.forEach(({ matchIndex, relStart, relEnd }) => {
-        if (relStart > lastIdx) {
-          frag.appendChild(document.createTextNode(text.substring(lastIdx, relStart)));
-        }
-
-        const mark = document.createElement('mark');
-        const isActive = matchIndex === activeMatchIdx;
-        mark.className = isActive ? 'search-match search-match-active' : 'search-match';
-        mark.setAttribute('data-match-idx', String(matchIndex));
-        mark.textContent = text.substring(relStart, relEnd);
-        frag.appendChild(mark);
-
-        lastIdx = relEnd;
-      });
-
-      if (lastIdx < text.length) {
-        frag.appendChild(document.createTextNode(text.substring(lastIdx)));
-      }
-
-      parent.replaceChild(frag, node);
-    });
-
-    return template.innerHTML;
-  } catch (err) {
-    console.warn("Line highlighting fallback:", err);
-    return lineHtml;
-  }
+  return resultHtml;
 }
+
+/**
+ * Memoized Code Line Component to prevent un-needed line re-renders during search navigation
+ */
+const CodeLineRow = React.memo(({ lineHtml, lineIdx, isHidden, hasFold, isCollapsed, collapsedCount, lineMatches, currentMatchIndex, toggleFold }) => {
+  if (isHidden) return null;
+
+  const finalHtml = lineMatches ? highlightLineHtml(lineHtml, lineMatches, currentMatchIndex) : lineHtml;
+
+  return (
+    <div id={`code-line-${lineIdx}`} className="code-line-row flex items-start">
+      {/* Line Number & Code Folding Gutter */}
+      <div className="code-fold-gutter flex items-center justify-end">
+        <span className="line-num-text">{lineIdx + 1}</span>
+        {hasFold && (
+          <button
+            className="fold-btn"
+            onClick={() => toggleFold(lineIdx)}
+            title={isCollapsed ? "Click to expand the range." : "Click to collapse the range."}
+          >
+            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
+      </div>
+
+      {/* Syntax Highlighted Line Content */}
+      <div className="code-line-content flex-1 flex items-center flex-wrap" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <span dangerouslySetInnerHTML={{ __html: finalHtml || ' ' }} />
+
+        {/* Collapsed Indicator Badge */}
+        {hasFold && isCollapsed && (
+          <span
+            className="collapsed-preview-badge"
+            onClick={() => toggleFold(lineIdx)}
+            title="Click to expand the range."
+          >
+            ... {collapsedCount} lines
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
 
 const CodeFormatter = () => {
   usePageTitle('Code Formatter');
@@ -416,6 +409,8 @@ const CodeFormatter = () => {
   useEffect(() => {
     if (isFullScreen) {
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      window.scrollTo(0, 0);
       setTimeout(() => {
         if (searchInputRef.current) {
           searchInputRef.current.focus();
@@ -423,19 +418,21 @@ const CodeFormatter = () => {
       }, 100);
     } else {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     };
   }, [isFullScreen]);
 
   // Toggle single fold range
-  const toggleFold = (startLine) => {
+  const toggleFold = useCallback((startLine) => {
     setCollapsedFolds((prev) => ({
       ...prev,
       [startLine]: !prev[startLine],
     }));
-  };
+  }, []);
 
   // Expand all sections
   const handleExpandAll = () => {
@@ -843,48 +840,26 @@ const CodeFormatter = () => {
           <div className="fullscreen-code-body p-6" ref={modalCodeRef}>
             <div className="code-lines-container font-mono text-sm" style={{ lineHeight: '1.6', background: '#090a0e' }}>
               {highlightedLines.map((lineHtml, lineIdx) => {
-                if (hiddenLinesSet.has(lineIdx)) return null;
-
                 const hasFold = foldRanges[lineIdx] !== undefined;
                 const isCollapsed = Boolean(collapsedFolds[lineIdx]);
                 const collapsedEnd = foldRanges[lineIdx];
                 const collapsedCount = collapsedEnd ? collapsedEnd - lineIdx : 0;
-
+                const isHidden = hiddenLinesSet.has(lineIdx);
                 const lineMatches = lineMatchesMap[lineIdx];
-                const finalHtml = lineMatches ? highlightLineHtml(lineHtml, lineMatches, currentMatchIndex) : lineHtml;
 
                 return (
-                  <div key={lineIdx} id={`code-line-${lineIdx}`} className="code-line-row flex items-start">
-                    {/* Line Number & Code Folding Gutter */}
-                    <div className="code-fold-gutter flex items-center justify-end">
-                      <span className="line-num-text">{lineIdx + 1}</span>
-                      {hasFold && (
-                        <button
-                          className="fold-btn"
-                          onClick={() => toggleFold(lineIdx)}
-                          title={isCollapsed ? "Click to expand the range." : "Click to collapse the range."}
-                        >
-                          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Syntax Highlighted Line Content */}
-                    <div className="code-line-content flex-1 flex items-center flex-wrap" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                      <span dangerouslySetInnerHTML={{ __html: finalHtml || ' ' }} />
-
-                      {/* Collapsed Indicator Badge */}
-                      {hasFold && isCollapsed && (
-                        <span
-                          className="collapsed-preview-badge"
-                          onClick={() => toggleFold(lineIdx)}
-                          title="Click to expand the range."
-                        >
-                          ... {collapsedCount} lines
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <CodeLineRow
+                    key={lineIdx}
+                    lineHtml={lineHtml}
+                    lineIdx={lineIdx}
+                    isHidden={isHidden}
+                    hasFold={hasFold}
+                    isCollapsed={isCollapsed}
+                    collapsedCount={collapsedCount}
+                    lineMatches={lineMatches}
+                    currentMatchIndex={currentMatchIndex}
+                    toggleFold={toggleFold}
+                  />
                 );
               })}
             </div>
@@ -916,8 +891,8 @@ const CodeFormatter = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           max-width: 100%;
           max-height: 100%;
           background: #0a0a0f;

@@ -31,7 +31,7 @@ const sampleModified = `{
   "author": "DevTools Team"
 }`;
 
-// LCS Diff Algorithm
+// LCS Diff Algorithm with precomputed inline word diffs for high performance
 function computeDiff(origText, modText) {
   const origLines = origText.split('\n');
   const modLines = modText.split('\n');
@@ -101,10 +101,13 @@ function computeDiff(origText, modText) {
           const rem = removes[m];
           const add = adds[m];
           if (rem && add) {
+            const inline = computeInlineWordDiff(rem.orig, add.mod);
             rows.push({
               type: 'modify',
               left: { lineNum: rem.origIndex + 1, content: rem.orig },
-              right: { lineNum: add.modIndex + 1, content: add.mod }
+              right: { lineNum: add.modIndex + 1, content: add.mod },
+              leftTokens: inline.leftTokens,
+              rightTokens: inline.rightTokens
             });
             modificationsCount++;
           } else if (rem) {
@@ -290,6 +293,44 @@ function renderTokensWithMatches(tokens, paneMatches, activeMatchIdx, tokenTypeC
   });
 }
 
+/**
+ * Memoized Diff Row Component to prevent un-needed re-renders during search
+ */
+const DiffRow = React.memo(({ row, idx, leftMatches, rightMatches, currentMatchIndex, isFocused }) => {
+  let rowClass = 'diff-row-equal';
+  if (row.type === 'add') rowClass = 'diff-row-add';
+  if (row.type === 'remove') rowClass = 'diff-row-remove';
+  if (row.type === 'modify') rowClass = 'diff-row-modify';
+
+  return (
+    <div id={`diff-row-${idx}`} className={`diff-split-row ${rowClass} ${isFocused ? 'diff-row-focused' : ''}`}>
+      {/* Left Pane (Original) */}
+      <div className={`diff-pane left-pane ${row.type === 'remove' ? 'pane-removed' : row.type === 'modify' ? 'pane-modified' : ''}`}>
+        <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
+        <span className="line-content">
+          {row.leftTokens ? (
+            renderTokensWithMatches(row.leftTokens, leftMatches, currentMatchIndex, 'remove')
+          ) : (
+            renderTextWithMatches(row.left ? row.left.content : '', leftMatches, currentMatchIndex)
+          )}
+        </span>
+      </div>
+
+      {/* Right Pane (Modified) */}
+      <div className={`diff-pane right-pane ${row.type === 'add' ? 'pane-added' : row.type === 'modify' ? 'pane-modified' : ''}`}>
+        <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
+        <span className="line-content">
+          {row.rightTokens ? (
+            renderTokensWithMatches(row.rightTokens, rightMatches, currentMatchIndex, 'add')
+          ) : (
+            renderTextWithMatches(row.right ? row.right.content : '', rightMatches, currentMatchIndex)
+          )}
+        </span>
+      </div>
+    </div>
+  );
+});
+
 const TextCompare = () => {
   usePageTitle('Text Comparison');
   const [originalText, setOriginalText] = useState(sampleOriginal);
@@ -302,12 +343,13 @@ const TextCompare = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
-  // Next / Previous Modification Change navigation states
+  // Next / Previous Modification Change navigation states (Full view only)
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
 
   const resultRef = useRef(null);
   const modalDiffContainerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const fullscreenCodeBodyRef = useRef(null);
 
   // Debounce search query input to prevent UI lag on large text
   useEffect(() => {
@@ -406,7 +448,7 @@ const TextCompare = () => {
 
   const totalMatches = searchMatches.length;
 
-  // Reset match indices when query or diff changes
+  // Reset search match index when query or diff changes
   useEffect(() => {
     setCurrentMatchIndex(0);
   }, [debouncedSearchQuery, diffResult]);
@@ -415,61 +457,83 @@ const TextCompare = () => {
     setCurrentChangeIndex(0);
   }, [diffResult]);
 
-  // Scroll to active search match
+  // Scroll to active search match inside modal scroll container
   useEffect(() => {
     if (totalMatches === 0) return;
     const validIdx = Math.min(Math.max(0, currentMatchIndex), totalMatches - 1);
     const activeMatch = searchMatches[validIdx];
     if (activeMatch) {
       requestAnimationFrame(() => {
-        const markEl = document.querySelector(`mark[data-match-idx="${validIdx}"]`);
-        if (markEl) {
-          markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          const rowEl = document.getElementById(`diff-row-${activeMatch.rowIdx}`);
-          if (rowEl) {
-            rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+        const container = fullscreenCodeBodyRef.current;
+        const markEl = container ? container.querySelector(`mark[data-match-idx="${validIdx}"]`) : null;
+        const targetEl = markEl || document.getElementById(`diff-row-${activeMatch.rowIdx}`);
+
+        if (container && targetEl) {
+          const containerRect = container.getBoundingClientRect();
+          const elRect = targetEl.getBoundingClientRect();
+          const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+          const targetScrollTop = Math.max(0, relativeTop - 30);
+
+          container.scrollTo({
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
         }
       });
     }
   }, [currentMatchIndex, totalMatches, searchMatches]);
 
-  // Scroll to target modification change block
-  const scrollToChangeBlock = (blockIdx) => {
-    if (changeBlocks.length === 0 || blockIdx < 0 || blockIdx >= changeBlocks.length) return;
+  // Scroll to target modification change block cleanly inside full view scroll container
+  const scrollToChangeBlock = useCallback((blockIdx) => {
+    if (!changeBlocks || changeBlocks.length === 0 || blockIdx < 0 || blockIdx >= changeBlocks.length) return;
     const targetRowIdx = changeBlocks[blockIdx].startRowIdx;
     requestAnimationFrame(() => {
+      const container = fullscreenCodeBodyRef.current;
       const rowEl = document.getElementById(`diff-row-${targetRowIdx}`);
-      if (rowEl) {
-        rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      if (!container || !rowEl) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const rowRect = rowEl.getBoundingClientRect();
+      const relativeTop = rowRect.top - containerRect.top + container.scrollTop;
+      const targetScrollTop = Math.max(0, relativeTop - 30);
+
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
     });
-  };
+  }, [changeBlocks]);
+
+  // Auto-focus Change 1 (index 0) upon opening Full View
+  useEffect(() => {
+    if (isFullScreen && changeBlocks.length > 0) {
+      setCurrentChangeIndex(0);
+      const timer = setTimeout(() => {
+        scrollToChangeBlock(0);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullScreen, changeBlocks, scrollToChangeBlock]);
 
   const handleNextChange = () => {
     if (changeBlocks.length === 0) return;
-    const nextIdx = (currentChangeIndex + 1) % changeBlocks.length;
+    const nextIdx = Math.min(currentChangeIndex + 1, changeBlocks.length - 1);
     setCurrentChangeIndex(nextIdx);
     scrollToChangeBlock(nextIdx);
   };
 
   const handlePrevChange = () => {
     if (changeBlocks.length === 0) return;
-    const prevIdx = (currentChangeIndex - 1 + changeBlocks.length) % changeBlocks.length;
+    const prevIdx = Math.max(0, currentChangeIndex - 1);
     setCurrentChangeIndex(prevIdx);
     scrollToChangeBlock(prevIdx);
   };
 
-  // Scroll to Comparison Result section when Compare button is clicked
+  // Compute diff and open full view popup by default on compare
   const handleCompare = () => {
     const res = computeDiff(originalText, modifiedText);
     setDiffResult(res);
-    setTimeout(() => {
-      if (resultRef.current) {
-        resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
+    setIsFullScreen(true);
   };
 
   const handleSwap = () => {
@@ -497,10 +561,12 @@ const TextCompare = () => {
     setCurrentMatchIndex(0);
   }, []);
 
-  // Lock body scroll on Full Screen
+  // Lock body & documentElement scroll on Full Screen
   useEffect(() => {
     if (isFullScreen) {
       document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      window.scrollTo(0, 0);
       setTimeout(() => {
         if (searchInputRef.current) {
           searchInputRef.current.focus();
@@ -508,9 +574,11 @@ const TextCompare = () => {
       }, 100);
     } else {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     };
   }, [isFullScreen]);
 
@@ -554,62 +622,38 @@ const TextCompare = () => {
   }, [isFullScreen, searchQuery, closeFullScreen]);
 
   // Shared Diff Table Component
-  const renderDiffTable = (containerRef = null) => (
-    <div className="diff-split-container" ref={containerRef}>
-      <div className="diff-split-header">
-        <div className="diff-split-col-header">Original Text</div>
-        <div className="diff-split-col-header">Modified Text</div>
+  const renderDiffTable = (containerRef = null) => {
+    const activeChangeBlock = changeBlocks[currentChangeIndex];
+
+    return (
+      <div className="diff-split-container" ref={containerRef}>
+        <div className="diff-split-header">
+          <div className="diff-split-col-header">Original Text</div>
+          <div className="diff-split-col-header">Modified Text</div>
+        </div>
+
+        <div className="diff-split-rows">
+          {diffResult.rows.map((row, idx) => {
+            const isFocused = isFullScreen && activeChangeBlock && idx >= activeChangeBlock.startRowIdx && idx <= activeChangeBlock.endRowIdx;
+            const leftMatches = matchesByRowAndSide[`${idx}-left`];
+            const rightMatches = matchesByRowAndSide[`${idx}-right`];
+
+            return (
+              <DiffRow
+                key={idx}
+                row={row}
+                idx={idx}
+                leftMatches={leftMatches}
+                rightMatches={rightMatches}
+                currentMatchIndex={currentMatchIndex}
+                isFocused={isFocused}
+              />
+            );
+          })}
+        </div>
       </div>
-
-      <div className="diff-split-rows">
-        {diffResult.rows.map((row, idx) => {
-          let rowClass = 'diff-row-equal';
-          if (row.type === 'add') rowClass = 'diff-row-add';
-          if (row.type === 'remove') rowClass = 'diff-row-remove';
-          if (row.type === 'modify') rowClass = 'diff-row-modify';
-
-          let leftTokens = null;
-          let rightTokens = null;
-          if (row.type === 'modify' && row.left && row.right) {
-            const inline = computeInlineWordDiff(row.left.content, row.right.content);
-            leftTokens = inline.leftTokens;
-            rightTokens = inline.rightTokens;
-          }
-
-          const leftMatches = matchesByRowAndSide[`${idx}-left`];
-          const rightMatches = matchesByRowAndSide[`${idx}-right`];
-
-          return (
-            <div key={idx} id={`diff-row-${idx}`} className={`diff-split-row ${rowClass}`}>
-              {/* Left Pane (Original) */}
-              <div className={`diff-pane left-pane ${row.type === 'remove' ? 'pane-removed' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-                <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
-                <span className="line-content">
-                  {leftTokens ? (
-                    renderTokensWithMatches(leftTokens, leftMatches, currentMatchIndex, 'remove')
-                  ) : (
-                    renderTextWithMatches(row.left ? row.left.content : '', leftMatches, currentMatchIndex)
-                  )}
-                </span>
-              </div>
-
-              {/* Right Pane (Modified) */}
-              <div className={`diff-pane right-pane ${row.type === 'add' ? 'pane-added' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-                <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
-                <span className="line-content">
-                  {rightTokens ? (
-                    renderTokensWithMatches(rightTokens, rightMatches, currentMatchIndex, 'add')
-                  ) : (
-                    renderTextWithMatches(row.right ? row.right.content : '', rightMatches, currentMatchIndex)
-                  )}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
@@ -707,30 +751,8 @@ const TextCompare = () => {
               </button>
             </div>
 
-            {/* Change Navigation Controls & Pills */}
+            {/* Change Pills */}
             <div className="flex gap-2 items-center flex-wrap">
-              {changeBlocks.length > 0 && (
-                <div className="flex items-center gap-1 mr-2 nav-change-group" style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
-                  <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600, marginRight: '0.2rem' }}>
-                    Change {currentChangeIndex + 1}/{changeBlocks.length}
-                  </span>
-                  <button
-                    className="btn btn-ghost btn-xs search-nav-btn"
-                    onClick={handlePrevChange}
-                    title="Previous modification"
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-xs search-nav-btn"
-                    onClick={handleNextChange}
-                    title="Next modification"
-                  >
-                    <ArrowDown size={14} />
-                  </button>
-                </div>
-              )}
-
               <span className="diff-pill diff-pill-add">
                 <PlusCircle size={14} /> {diffResult.additionsCount} Additions
               </span>
@@ -769,7 +791,7 @@ const TextCompare = () => {
               </div>
             </div>
 
-            {/* Find Text Search Bar & Modification Navigation */}
+            {/* Find Text Search Bar */}
             <div className="fullscreen-search-bar">
               <div className="search-input-wrapper">
                 <Search size={15} className="search-icon" />
@@ -831,14 +853,16 @@ const TextCompare = () => {
                   <button
                     className="btn btn-ghost btn-xs search-nav-btn"
                     onClick={handlePrevChange}
-                    title="Previous modification"
+                    disabled={currentChangeIndex === 0}
+                    title="Previous modification (Up)"
                   >
                     <ArrowUp size={14} />
                   </button>
                   <button
                     className="btn btn-ghost btn-xs search-nav-btn"
                     onClick={handleNextChange}
-                    title="Next modification"
+                    disabled={currentChangeIndex === changeBlocks.length - 1}
+                    title="Next modification (Down)"
                   >
                     <ArrowDown size={14} />
                   </button>
@@ -852,7 +876,7 @@ const TextCompare = () => {
           </div>
 
           {/* Full Screen Diff Body */}
-          <div className="fullscreen-code-body p-6">
+          <div className="fullscreen-code-body p-6" ref={fullscreenCodeBodyRef}>
             {renderDiffTable(modalDiffContainerRef)}
           </div>
         </div>,
@@ -934,6 +958,14 @@ const TextCompare = () => {
           grid-template-columns: 1fr 1fr;
           border-bottom: 1px solid rgba(255, 255, 255, 0.03);
           line-height: 1.5;
+          transition: background 0.2s ease, outline 0.2s ease;
+        }
+
+        .diff-row-focused {
+          outline: 2px solid var(--accent, #6366f1);
+          outline-offset: -2px;
+          box-shadow: inset 0 0 16px rgba(99, 102, 241, 0.4);
+          background: rgba(99, 102, 241, 0.18) !important;
         }
 
         .diff-pane {
@@ -1000,8 +1032,8 @@ const TextCompare = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: 100%;
           max-width: 100%;
           max-height: 100%;
           background: #0a0a0f;
