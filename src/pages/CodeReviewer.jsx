@@ -40,7 +40,7 @@ const CodeReviewer = () => {
   };
 
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
+    <div className="tool-page">
       <ToolHeader 
         title="Code Reviewer" 
         description="Automated heuristic code review to spot bugs and anti-patterns."
@@ -48,15 +48,14 @@ const CodeReviewer = () => {
         color="var(--info)"
       />
 
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)', gap: '2rem' }}>
-        <div className="code-editor-container flex flex-col">
-          <div className="code-editor-header">
-            <span className="font-mono text-sm">Source Code</span>
+      <div className="editor-split split-3-2">
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Source Code</span>
             <div className="flex gap-2">
               <UploadButton 
                 label="Upload"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
+                className="btn btn-ghost btn-xs"
                 onFileLoaded={(res) => setCode(res.content)}
               />
               <button className="btn btn-primary btn-sm" onClick={analyzeCode} disabled={!code || isAnalyzing} style={{ padding: '0.4rem 1rem' }}>
@@ -64,19 +63,21 @@ const CodeReviewer = () => {
               </button>
             </div>
           </div>
+          <div className="code-panel-body">
           <CodeDropzoneTextarea
             value={code}
             onChange={(val) => setCode(val)}
             placeholder="Paste or drag & drop code file to review..."
-            style={{ flex: 1, minHeight: '65vh' }}
+            lineNumbers
           />
+          </div>
         </div>
 
-        <div className="code-editor-container flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-          <div className="code-editor-header">
-            <span className="font-mono text-sm">Review Results</span>
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Review Results</span>
           </div>
-          <div className="p-4" style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="code-panel-body p-4" style={{ overflowY: 'auto', height: 'auto', maxHeight: 'var(--editor-height)' }}>
             {issues.length === 0 ? (
               <div className="text-center text-muted mt-8">
                 <Search size={48} className="mx-auto mb-4 opacity-20" />

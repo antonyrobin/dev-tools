@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ToolHeader from '../components/ToolHeader';
+import FindBar from '../components/FindBar';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { FileJson, Play, Copy, Check, Maximize2, X, RotateCcw, Search, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
+import { FileJson, Play, Copy, Check, Maximize2, Minimize2, RotateCcw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, WrapText, Download, Trash2, AlertTriangle } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
 import prettierPluginEstree from 'prettier/plugins/estree';
@@ -11,6 +11,8 @@ import prettierPluginPostcss from 'prettier/plugins/postcss';
 import prettierPluginMarkdown from 'prettier/plugins/markdown';
 import prettierPluginYaml from 'prettier/plugins/yaml';
 import usePageTitle from '../hooks/usePageTitle';
+import useMaximize from '../hooks/useMaximize';
+import { buildSearchRegex, scanLine, highlightHtmlRanges, MAX_MATCHES } from '../utils/textSearch';
 
 // Import Prism core and themes
 import Prism from 'prismjs';
@@ -180,66 +182,36 @@ function splitPrismHtmlIntoLines(html) {
 }
 
 /**
- * Ultra-fast string-based line HTML search highlight (zero DOM template allocation overhead)
- * Handles special characters like :, -, * safely via regex lookahead outside HTML tags.
+ * One rendered line of the output viewer. Memoized and fed only line-local props.
+ * The "active" match is never a prop: it is toggled directly on the <mark> element,
+ * so stepping through search results costs no React rendering at all.
  */
-function highlightLineHtml(lineHtml, lineMatches, activeMatchIdx) {
-  if (!lineHtml || !lineMatches || lineMatches.length === 0) return lineHtml;
-
-  let resultHtml = lineHtml;
-
-  lineMatches.forEach(m => {
-    const queryText = m.text;
-    if (!queryText) return;
-    const escaped = queryText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'gi');
-    const isActive = m.matchIndex === activeMatchIdx;
-    const markClass = isActive ? 'search-match search-match-active' : 'search-match';
-    
-    resultHtml = resultHtml.replace(regex, (matchText) => {
-      return `<mark class="${markClass}" data-match-idx="${m.matchIndex}">${matchText}</mark>`;
-    });
-  });
-
-  return resultHtml;
-}
-
-/**
- * Memoized Code Line Component to prevent un-needed line re-renders during search navigation
- */
-const CodeLineRow = React.memo(({ lineHtml, lineIdx, isHidden, hasFold, isCollapsed, collapsedCount, lineMatches, currentMatchIndex, toggleFold }) => {
-  if (isHidden) return null;
-
-  const finalHtml = lineMatches ? highlightLineHtml(lineHtml, lineMatches, currentMatchIndex) : lineHtml;
+const CodeLineRow = React.memo(({ lineHtml, lineIdx, hasFold, isCollapsed, collapsedCount, ranges, toggleFold }) => {
+  const finalHtml = ranges ? highlightHtmlRanges(lineHtml, ranges, -1) : lineHtml;
 
   return (
-    <div id={`code-line-${lineIdx}`} className="code-line-row flex items-start">
-      {/* Line Number & Code Folding Gutter */}
-      <div className="code-fold-gutter flex items-center justify-end">
+    <div data-line={lineIdx} className="code-line-row">
+      <div className="code-fold-gutter">
         <span className="line-num-text">{lineIdx + 1}</span>
-        {hasFold && (
+        {hasFold ? (
           <button
+            type="button"
             className="fold-btn"
             onClick={() => toggleFold(lineIdx)}
-            title={isCollapsed ? "Click to expand the range." : "Click to collapse the range."}
+            title={isCollapsed ? 'Expand range' : 'Collapse range'}
           >
-            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           </button>
+        ) : (
+          <span className="fold-spacer" />
         )}
       </div>
 
-      {/* Syntax Highlighted Line Content */}
-      <div className="code-line-content flex-1 flex items-center flex-wrap" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+      <div className="code-line-content">
         <span dangerouslySetInnerHTML={{ __html: finalHtml || ' ' }} />
-
-        {/* Collapsed Indicator Badge */}
         {hasFold && isCollapsed && (
-          <span
-            className="collapsed-preview-badge"
-            onClick={() => toggleFold(lineIdx)}
-            title="Click to expand the range."
-          >
-            ... {collapsedCount} lines
+          <span className="collapsed-preview-badge" onClick={() => toggleFold(lineIdx)} title="Expand range">
+            … {collapsedCount} lines
           </span>
         )}
       </div>
@@ -247,271 +219,245 @@ const CodeLineRow = React.memo(({ lineHtml, lineIdx, isHidden, hasFold, isCollap
   );
 });
 
+/** The whole line list; memoized so parent updates (e.g. match counter) skip it. */
+const CodeLines = React.memo(({ visibleLines, highlightedLines, foldRanges, collapsedFolds, rangesByLine, toggleFold, className }) => (
+  <div className={className}>
+    {visibleLines.map((lineIdx) => {
+      const foldEnd = foldRanges[lineIdx];
+      return (
+        <CodeLineRow
+          key={lineIdx}
+          lineHtml={highlightedLines[lineIdx]}
+          lineIdx={lineIdx}
+          hasFold={foldEnd !== undefined}
+          isCollapsed={Boolean(collapsedFolds[lineIdx])}
+          collapsedCount={foldEnd ? foldEnd - lineIdx : 0}
+          ranges={rangesByLine.get(lineIdx)}
+          toggleFold={toggleFold}
+        />
+      );
+    })}
+  </div>
+));
+
+const INDENT_OPTIONS = [
+  { value: '2', label: '2 spaces' },
+  { value: '4', label: '4 spaces' },
+  { value: 'tab', label: 'Tabs' },
+];
+
+const LANGUAGES = [
+  { value: 'json', label: 'JSON', ext: 'json' },
+  { value: 'javascript', label: 'JavaScript', ext: 'js' },
+  { value: 'html', label: 'HTML', ext: 'html' },
+  { value: 'css', label: 'CSS', ext: 'css' },
+  { value: 'java', label: 'Java', ext: 'java' },
+  { value: 'csharp', label: 'C#', ext: 'cs' },
+  { value: 'python', label: 'Python', ext: 'py' },
+  { value: 'sql', label: 'SQL', ext: 'sql' },
+  { value: 'php', label: 'PHP', ext: 'php' },
+  { value: 'c', label: 'C', ext: 'c' },
+  { value: 'cpp', label: 'C++', ext: 'cpp' },
+  { value: 'yaml', label: 'YML / YAML', ext: 'yaml' },
+  { value: 'markdown', label: 'Markdown (MD)', ext: 'md' },
+];
+
+const basicIndenter = (code, unit) => {
+  let indentLevel = 0;
+  const lines = code.split('\n');
+  const out = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const startsWithCloser = /^[})\]]/.test(line);
+    if (startsWithCloser) {
+      indentLevel = Math.max(0, indentLevel - 1);
+    }
+
+    out.push(unit.repeat(indentLevel) + line);
+
+    const openCount = (line.match(/[{[(]/g) || []).length;
+    const closeCount = (line.match(/[})\]]/g) || []).length;
+    // The leading closer was already applied above
+    indentLevel += openCount - closeCount + (startsWithCloser ? 1 : 0);
+    indentLevel = Math.max(0, indentLevel);
+  }
+  return out.join('\n');
+};
+
+const sqlFormatter = (code, unit) => {
+  return code
+    .replace(/\s+/g, ' ')
+    .replace(/\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|LEFT JOIN|RIGHT JOIN|INNER JOIN|OUTER JOIN|LIMIT|HAVING|INSERT INTO|UPDATE|DELETE FROM|SET|VALUES|UNION ALL|UNION)\b/gi, '\n$1')
+    .replace(/ \b(AND|OR)\b/gi, `\n${unit}$1`)
+    .replace(/^\s*\n/gm, '')
+    .trim();
+};
+
+const pythonFormatter = (code) => {
+  return code
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const CodeFormatter = () => {
   usePageTitle('Code Formatter');
   const [language, setLanguage] = useState('json');
+  const [indent, setIndent] = useState('2');
   const [inputCode, setInputCode] = useState(defaultSampleCode.json);
   const [formattedCode, setFormattedCode] = useState(defaultSampleCode.json);
   const [copied, setCopied] = useState(false);
-  const [fullscreenCopied, setFullscreenCopied] = useState(false);
   const [error, setError] = useState(null);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isFormatting, setIsFormatting] = useState(false);
+  const [wrapLines, setWrapLines] = useState(false);
+  const [isMaximized, setIsMaximized] = useMaximize();
 
-  // Search feature states with 200ms debounce
+  // Find state: the query arrives already debounced from FindBar
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
   // Code Folding states: object map of collapsed startLine index -> boolean
   const [collapsedFolds, setCollapsedFolds] = useState({});
 
-  const codeRef = useRef(null);
-  const modalCodeRef = useRef(null);
+  const scrollRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // Debounce search query input to eliminate freezing on large code
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 200);
-    return () => clearTimeout(handler);
-  }, [searchQuery]);
-
-  // Highlight preview in split view
-  useEffect(() => {
-    if (codeRef.current) {
-      Prism.highlightElement(codeRef.current);
-    }
-  }, [formattedCode, language]);
-
-  // Compute fold ranges for current code
   const activeCode = formattedCode || inputCode;
-  const foldRanges = useMemo(() => {
-    return getFoldableRanges(activeCode, language);
-  }, [activeCode, language]);
 
-  // High performance hidden lines lookup set: O(1) per line render check instead of O(N*F)
-  const hiddenLinesSet = useMemo(() => {
-    const hidden = new Set();
-    for (const [startStr, isCollapsed] of Object.entries(collapsedFolds)) {
-      if (!isCollapsed) continue;
-      const start = Number(startStr);
-      const end = foldRanges[start];
-      if (end && end > start) {
-        for (let i = start + 1; i <= end; i++) {
-          hidden.add(i);
-        }
-      }
-    }
-    return hidden;
-  }, [collapsedFolds, foldRanges]);
+  const foldRanges = useMemo(() => getFoldableRanges(activeCode, language), [activeCode, language]);
 
-  // Prism highlighted line HTMLs for full screen view
+  // Syntax highlight once per code change, then split into per-line HTML
   const highlightedLines = useMemo(() => {
     const prismLang = languagePrismMap[language] || 'javascript';
     const grammar = Prism.languages[prismLang] || Prism.languages.javascript;
-    const highlightedHtml = Prism.highlight(activeCode, grammar, prismLang);
-    return splitPrismHtmlIntoLines(highlightedHtml);
+    return splitPrismHtmlIntoLines(Prism.highlight(activeCode, grammar, prismLang));
   }, [activeCode, language]);
 
-  // Compute search matches per line with fast data-driven regex
-  const { lineMatchesMap, matchesList } = useMemo(() => {
-    if (!debouncedSearchQuery.trim() || !activeCode) {
-      return { lineMatchesMap: {}, matchesList: [] };
+  // Line indices that are currently visible (collapsed ranges are skipped in one jump)
+  const visibleLines = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < highlightedLines.length; i++) {
+      out.push(i);
+      if (collapsedFolds[i] && foldRanges[i] > i) i = foldRanges[i];
     }
+    return out;
+  }, [highlightedLines, collapsedFolds, foldRanges]);
 
-    const query = debouncedSearchQuery;
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let regex;
-    try {
-      regex = new RegExp(escaped, 'gi');
-    } catch {
-      return { lineMatchesMap: {}, matchesList: [] };
-    }
+  // Plain-text search, line by line, producing per-line range arrays for the rows
+  const { rangesByLine, matchesList } = useMemo(() => {
+    const regex = buildSearchRegex(searchQuery, { matchCase });
+    if (!regex || !activeCode) return { rangesByLine: new Map(), matchesList: [] };
 
     const lines = activeCode.split('\n');
-    const lineMatchesMap = {};
-    const matchesList = [];
-    let matchCounter = 0;
-
-    lines.forEach((lineText, lineIdx) => {
-      regex.lastIndex = 0;
-      let m;
-      while ((m = regex.exec(lineText)) !== null) {
-        if (m[0].length === 0) { regex.lastIndex++; continue; }
-        const matchObj = {
-          matchIndex: matchCounter++,
-          lineIdx,
-          startCol: m.index,
-          endCol: m.index + m[0].length,
-          text: m[0]
-        };
-        if (!lineMatchesMap[lineIdx]) lineMatchesMap[lineIdx] = [];
-        lineMatchesMap[lineIdx].push(matchObj);
-        matchesList.push(matchObj);
-      }
-    });
-
-    return { lineMatchesMap, matchesList };
-  }, [activeCode, debouncedSearchQuery]);
+    const byLine = new Map();
+    const list = [];
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const keepGoing = scanLine(regex, lines[lineIdx], (start, end) => {
+        const match = { idx: list.length, lineIdx, start, end };
+        list.push(match);
+        let arr = byLine.get(lineIdx);
+        if (!arr) byLine.set(lineIdx, (arr = []));
+        arr.push(match);
+        return list.length < MAX_MATCHES;
+      });
+      if (!keepGoing) break;
+    }
+    return { rangesByLine: byLine, matchesList: list };
+  }, [activeCode, searchQuery, matchCase]);
 
   const totalMatches = matchesList.length;
+  const activeMatch = totalMatches > 0 ? matchesList[Math.min(currentMatchIndex, totalMatches - 1)] : null;
 
-  // Reset search match index on query or code changes
   useEffect(() => {
     setCurrentMatchIndex(0);
-  }, [debouncedSearchQuery, activeCode]);
+  }, [searchQuery, matchCase, activeCode]);
 
-  // Auto-expand fold if search match is hidden inside it, and scroll into view
+  // Reveal the active match: expand any collapsed fold that hides it
   useEffect(() => {
-    if (totalMatches === 0) return;
-    const validIdx = Math.min(Math.max(0, currentMatchIndex), totalMatches - 1);
-    const activeMatch = matchesList[validIdx];
-
-    if (activeMatch) {
-      const targetLine = activeMatch.lineIdx;
-      setCollapsedFolds((prevFolds) => {
-        let needsUpdate = false;
-        const nextFolds = { ...prevFolds };
-        Object.entries(nextFolds).forEach(([startStr, isCollapsed]) => {
-          if (!isCollapsed) return;
-          const start = Number(startStr);
-          const end = foldRanges[start];
-          if (end && targetLine > start && targetLine <= end) {
-            nextFolds[start] = false;
-            needsUpdate = true;
-          }
-        });
-        return needsUpdate ? nextFolds : prevFolds;
-      });
-
-      requestAnimationFrame(() => {
-        const markEl = document.querySelector(`mark[data-match-idx="${validIdx}"]`);
-        if (markEl) {
-          markEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          const lineEl = document.getElementById(`code-line-${targetLine}`);
-          if (lineEl) {
-            lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }
+    if (!activeMatch) return;
+    const target = activeMatch.lineIdx;
+    const hiding = Object.keys(collapsedFolds).filter((key) => {
+      const start = Number(key);
+      return collapsedFolds[key] && target > start && target <= foldRanges[start];
+    });
+    if (hiding.length) {
+      setCollapsedFolds((prev) => {
+        const next = { ...prev };
+        hiding.forEach((key) => { next[key] = false; });
+        return next;
       });
     }
-  }, [currentMatchIndex, totalMatches, matchesList, foldRanges]);
+  }, [activeMatch, collapsedFolds, foldRanges]);
 
-  const closeFullScreen = useCallback(() => {
-    setIsFullScreen(false);
-    setSearchQuery('');
-    setCurrentMatchIndex(0);
-  }, []);
+  // Mark the active match directly in the DOM and scroll the viewer (not the page) to it.
+  // Re-runs when the rendered lines change so the highlight survives re-renders.
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.querySelectorAll('.search-match-active').forEach((el) => el.classList.remove('search-match-active'));
+    container.querySelectorAll('.has-active-match').forEach((el) => el.classList.remove('has-active-match'));
+    if (!activeMatch) return;
 
-  // Lock body scrolling on Full Screen
-  useEffect(() => {
-    if (isFullScreen) {
-      document.body.style.overflow = 'hidden';
-      document.documentElement.style.overflow = 'hidden';
-      window.scrollTo(0, 0);
-      setTimeout(() => {
-        if (searchInputRef.current) {
-          searchInputRef.current.focus();
-        }
-      }, 100);
-    } else {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
+    const mark = container.querySelector(`mark[data-match-idx="${activeMatch.idx}"]`);
+    if (!mark) return;
+    mark.classList.add('search-match-active');
+    const row = mark.closest('.code-line-row');
+    row.classList.add('has-active-match');
+
+    container.scrollTop = row.offsetTop - container.clientHeight / 2 + row.offsetHeight / 2;
+    if (!wrapLines) {
+      const gutter = 80;
+      const left = mark.offsetLeft;
+      if (left < container.scrollLeft + gutter || left + mark.offsetWidth > container.scrollLeft + container.clientWidth - 24) {
+        container.scrollLeft = Math.max(0, left - container.clientWidth / 2);
+      }
     }
-    return () => {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-    };
-  }, [isFullScreen]);
+  }, [activeMatch, rangesByLine, visibleLines, wrapLines]);
 
-  // Toggle single fold range
   const toggleFold = useCallback((startLine) => {
-    setCollapsedFolds((prev) => ({
-      ...prev,
-      [startLine]: !prev[startLine],
-    }));
+    setCollapsedFolds((prev) => ({ ...prev, [startLine]: !prev[startLine] }));
   }, []);
 
-  // Expand all sections
-  const handleExpandAll = () => {
-    setCollapsedFolds({});
-  };
+  const handleExpandAll = () => setCollapsedFolds({});
 
-  // Collapse all sections
   const handleCollapseAll = () => {
     const all = {};
-    Object.keys(foldRanges).forEach((line) => {
-      all[line] = true;
-    });
+    Object.keys(foldRanges).forEach((line) => { all[line] = true; });
     setCollapsedFolds(all);
   };
 
-  const handleNextMatch = () => {
+  const handleNextMatch = useCallback(() => {
     if (totalMatches === 0) return;
     setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
-  };
+  }, [totalMatches]);
 
-  const handlePrevMatch = () => {
+  const handlePrevMatch = useCallback(() => {
     if (totalMatches === 0) return;
     setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
-  };
+  }, [totalMatches]);
 
-  const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter') {
+  // Ctrl/Cmd+F inside the output panel focuses its find bar instead of the browser's
+  const handlePanelKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      if (e.shiftKey) {
-        handlePrevMatch();
-      } else {
-        handleNextMatch();
-      }
-    } else if (e.key === 'Escape') {
-      if (searchQuery) {
-        e.stopPropagation();
-        setSearchQuery('');
-      } else {
-        closeFullScreen();
-      }
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    } else if (e.key === 'F3') {
+      e.preventDefault();
+      if (e.shiftKey) handlePrevMatch(); else handleNextMatch();
     }
   };
 
-  const basicIndenter = (code) => {
-    let indentLevel = 0;
-    const lines = code.split('\n');
-    const out = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i].trim();
-      if (!line) continue;
-
-      if (line.match(/^[})]/)) {
-        indentLevel = Math.max(0, indentLevel - 1);
-      }
-
-      out.push('  '.repeat(indentLevel) + line);
-
-      const openCount = (line.match(/[{[(]/g) || []).length;
-      const closeCount = (line.match(/[})]/g) || []).length;
-      indentLevel += (openCount - closeCount);
-      indentLevel = Math.max(0, indentLevel);
-    }
-    return out.join('\n');
-  };
-
-  const sqlFormatter = (code) => {
-    return code
-      .replace(/\s+/g, ' ')
-      .replace(/\b(SELECT|FROM|WHERE|AND|OR|ORDER BY|GROUP BY|LEFT JOIN|RIGHT JOIN|INNER JOIN|LIMIT|HAVING|INSERT|UPDATE|DELETE|SET|VALUES)\b/gi, '\n$1')
-      .replace(/^\s*\n/gm, '')
-      .trim();
-  };
-
-  const pythonFormatter = (code) => {
-    return code
-      .replace(/[ \t]+$/gm, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+  const loadSample = (lang) => {
+    const sample = defaultSampleCode[lang] || '';
+    setInputCode(sample);
+    setFormattedCode(sample);
+    setError(null);
+    setCollapsedFolds({});
   };
 
   const handleLanguageChange = (newLang) => {
@@ -519,538 +465,239 @@ const CodeFormatter = () => {
     setError(null);
     setCollapsedFolds({});
     if (!inputCode.trim() || Object.values(defaultSampleCode).includes(inputCode)) {
-      const sample = defaultSampleCode[newLang] || '';
-      setInputCode(sample);
-      setFormattedCode(sample);
+      loadSample(newLang);
     }
   };
 
   const handleFormat = async () => {
-    try {
-      setError(null);
-      setCollapsedFolds({});
-      if (!inputCode.trim()) {
-        setFormattedCode('');
-        return;
-      }
+    setError(null);
+    setCollapsedFolds({});
+    if (!inputCode.trim()) {
+      setFormattedCode('');
+      return;
+    }
 
+    const unit = indent === 'tab' ? '\t' : ' '.repeat(Number(indent));
+    setIsFormatting(true);
+    try {
       let result = inputCode;
 
       if (language === 'json') {
-        const parsed = JSON.parse(inputCode);
-        result = JSON.stringify(parsed, null, 2);
-      } 
-      else if (['java', 'c', 'cpp', 'csharp', 'php'].includes(language)) {
-        result = basicIndenter(inputCode);
-      }
-      else if (language === 'sql') {
-        result = sqlFormatter(inputCode);
-      }
-      else if (language === 'python') {
+        result = JSON.stringify(JSON.parse(inputCode), null, unit);
+      } else if (['java', 'c', 'cpp', 'csharp', 'php'].includes(language)) {
+        result = basicIndenter(inputCode, unit);
+      } else if (language === 'sql') {
+        result = sqlFormatter(inputCode, unit);
+      } else if (language === 'python') {
         result = pythonFormatter(inputCode);
-      }
-      else {
-        const parserMap = {
-          javascript: 'babel',
-          html: 'html',
-          css: 'css',
-          yaml: 'yaml',
-          markdown: 'markdown'
-        };
-        const plugins = [
-          prettierPluginBabel, 
-          prettierPluginEstree, 
-          prettierPluginHtml, 
-          prettierPluginPostcss, 
-          prettierPluginMarkdown, 
-          prettierPluginYaml
-        ];
-        
+      } else {
+        const parserMap = { javascript: 'babel', html: 'html', css: 'css', yaml: 'yaml', markdown: 'markdown' };
         try {
           result = await prettier.format(inputCode, {
             parser: parserMap[language] || 'babel',
-            plugins: plugins,
+            plugins: [prettierPluginBabel, prettierPluginEstree, prettierPluginHtml, prettierPluginPostcss, prettierPluginMarkdown, prettierPluginYaml],
             singleQuote: true,
-            htmlWhitespaceSensitivity: 'ignore'
+            tabWidth: indent === 'tab' ? 2 : Number(indent),
+            useTabs: indent === 'tab',
+            htmlWhitespaceSensitivity: 'ignore',
           });
         } catch (prettierErr) {
-          console.warn("Prettier error, using basic indenter fallback:", prettierErr);
-          setError("Syntax warning: Basic formatting applied.");
-          result = basicIndenter(inputCode);
+          console.warn('Prettier error, using basic indenter fallback:', prettierErr);
+          setError({ type: 'warning', text: `Syntax warning: basic formatting applied. ${prettierErr.message?.split('\n')[0] || ''}` });
+          result = basicIndenter(inputCode, unit);
         }
       }
 
-      setFormattedCode(result);
-    } catch {
-      setError('Invalid code format. Please check for syntax errors.');
+      setFormattedCode(result.replace(/\n$/, ''));
+    } catch (err) {
+      setError({ type: 'error', text: `Invalid ${language.toUpperCase()}: ${err.message || 'please check for syntax errors.'}` });
+    } finally {
+      setIsFormatting(false);
     }
   };
 
-  const handleCopy = (isModal = false) => {
-    const textToCopy = formattedCode || inputCode;
-    navigator.clipboard.writeText(textToCopy);
-    if (isModal) {
-      setFullscreenCopied(true);
-      setTimeout(() => setFullscreenCopied(false), 2000);
-    } else {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  const handleCopy = () => {
+    navigator.clipboard.writeText(activeCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  // Close modal on Escape key
+  const handleDownload = () => {
+    const ext = LANGUAGES.find(l => l.value === language)?.ext || 'txt';
+    const blob = new Blob([activeCode], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `formatted.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClear = () => {
+    setInputCode('');
+    setFormattedCode('');
+    setError(null);
+    setCollapsedFolds({});
+  };
+
+  // Ctrl/Cmd+Enter formats from anywhere on the page
+  const formatRef = useRef(handleFormat);
+  formatRef.current = handleFormat;
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullScreen && !searchQuery) {
-        closeFullScreen();
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        formatRef.current();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullScreen, searchQuery, closeFullScreen]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
-  const languages = [
-    { value: 'json', label: 'JSON' },
-    { value: 'javascript', label: 'JavaScript' },
-    { value: 'html', label: 'HTML' },
-    { value: 'css', label: 'CSS' },
-    { value: 'java', label: 'Java' },
-    { value: 'csharp', label: 'C#' },
-    { value: 'python', label: 'Python' },
-    { value: 'sql', label: 'SQL' },
-    { value: 'php', label: 'PHP' },
-    { value: 'c', label: 'C' },
-    { value: 'cpp', label: 'C++' },
-    { value: 'yaml', label: 'YML / YAML' },
-    { value: 'markdown', label: 'Markdown (MD)' },
-  ];
-
-  const prismLangClass = `language-${languagePrismMap[language] || 'javascript'}`;
+  const lineCount = highlightedLines.length;
+  const foldCount = Object.keys(foldRanges).length;
 
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
-      <ToolHeader 
-        title="Code Formatter" 
-        description="Clean, beautify, and highlight your code across multiple languages with full precision."
+    <div className="tool-page">
+      <ToolHeader
+        title="Code Formatter"
+        description="Beautify and highlight code in 13 languages. Fold blocks, find text instantly, and expand the output to full screen."
         icon={FileJson}
         color="var(--primary)"
       />
 
-      <div className="glass-card p-6" style={{ padding: '1.5rem' }}>
-        {/* Responsive Controls Toolbar */}
-        <div className="flex justify-between items-center mb-4 block-mobile gap-3">
-          <div className="tool-controls-bar">
-            <div className="form-group mb-0" style={{ minWidth: '140px', flex: '1 1 auto' }}>
-              <select 
-                className="form-select"
-                value={language}
-                onChange={(e) => handleLanguageChange(e.target.value)}
-              >
-                {languages.map(lang => (
-                  <option key={lang.value} value={lang.value}>{lang.label}</option>
-                ))}
-              </select>
-            </div>
-            <button 
-              className="btn btn-ghost btn-sm" 
-              onClick={() => {
-                const sample = defaultSampleCode[language] || '';
-                setInputCode(sample);
-                setFormattedCode(sample);
-                setError(null);
-                setCollapsedFolds({});
-              }}
-              title="Reset Sample Code"
-            >
-              <RotateCcw size={16} /> <span>Sample</span>
-            </button>
-            <UploadButton 
-              label="Upload"
-              className="btn btn-outline btn-sm"
-              onFileLoaded={(res) => {
-                setInputCode(res.content);
-                if (res.detectedLanguage) {
-                  setLanguage(res.detectedLanguage);
-                }
-              }}
-            />
-            <button className="btn btn-outline btn-sm" onClick={() => handleCopy(false)} disabled={!formattedCode && !inputCode}>
-              {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
-            </button>
-          </div>
-
-          <div className="flex items-center w-full-mobile">
-            <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleFormat} disabled={!inputCode}>
-              <Play size={18} />
-              <span>Format Code</span>
-            </button>
-          </div>
+      {/* Controls Toolbar */}
+      <div className="tool-toolbar">
+        <div className="tool-toolbar-group">
+          <select className="form-select" value={language} onChange={(e) => handleLanguageChange(e.target.value)} aria-label="Language">
+            {LANGUAGES.map(lang => (
+              <option key={lang.value} value={lang.value}>{lang.label}</option>
+            ))}
+          </select>
+          <select className="form-select" value={indent} onChange={(e) => setIndent(e.target.value)} aria-label="Indentation" style={{ minWidth: 120 }}>
+            {INDENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button className="btn btn-ghost btn-sm" onClick={() => loadSample(language)} title="Load sample code">
+            <RotateCcw size={15} /> <span>Sample</span>
+          </button>
+          <UploadButton
+            label="Upload"
+            className="btn btn-outline btn-sm"
+            onFileLoaded={(res) => {
+              setInputCode(res.content);
+              if (res.detectedLanguage) setLanguage(res.detectedLanguage);
+            }}
+            onError={(msg) => setError({ type: 'error', text: msg })}
+          />
+          <button className="btn btn-ghost btn-sm btn-danger-ghost" onClick={handleClear} disabled={!inputCode && !formattedCode}>
+            <Trash2 size={15} /> <span>Clear</span>
+          </button>
         </div>
 
+        <button className="btn btn-primary" onClick={handleFormat} disabled={!inputCode || isFormatting} title="Format (Ctrl+Enter)">
+          <Play size={16} />
+          <span>{isFormatting ? 'Formatting…' : 'Format Code'}</span>
+        </button>
+      </div>
 
-        {error && (
-          <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
-            {error}
+      {error && (
+        <div className={`alert alert-${error.type}`}>
+          <AlertTriangle size={16} />
+          <span>{error.text}</span>
+          <button className="alert-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
+        </div>
+      )}
+
+      <div className="editor-split">
+        {/* Left: Input */}
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Input <span className="badge-lang">{language.toUpperCase()}</span></span>
+            <span className="text-xs text-muted">Drop a file or paste code</span>
           </div>
-        )}
-
-        {/* Split View Editor & Color-Coded Highlighted Output */}
-        <div className="formatter-split-grid">
-          {/* Left: Input Textarea Container */}
-          <div className="code-editor-container flex flex-col">
-            <div className="code-editor-header flex justify-between items-center">
-              <span className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Raw Input</span>
-              <span className="badge-lang">{language.toUpperCase()}</span>
-            </div>
+          <div className="code-panel-body">
             <CodeDropzoneTextarea
               value={inputCode}
               onChange={(val) => setInputCode(val)}
-              onFileLoaded={(res) => {
-                if (res.detectedLanguage) {
-                  setLanguage(res.detectedLanguage);
-                }
-              }}
+              onFileLoaded={(res) => { if (res.detectedLanguage) setLanguage(res.detectedLanguage); }}
               placeholder="Paste or drag & drop code file here..."
-              style={{ minHeight: '55vh' }}
+              lineNumbers
             />
           </div>
+          <div className="code-panel-footer">
+            <span>{inputCode ? inputCode.split('\n').length.toLocaleString() : 0} lines</span>
+            <span>{inputCode.length.toLocaleString()} chars</span>
+          </div>
+        </div>
 
-          {/* Right: Formatted & Color Coded Output */}
-          <div className="code-editor-container">
-            <div className="code-editor-header flex justify-between items-center">
-              <span className="text-muted" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Formatted & Highlighted Output</span>
-              
-              <button 
-                className="btn btn-ghost btn-sm flex items-center gap-1"
-                onClick={() => setIsFullScreen(true)}
-                title="Full Screen View"
-                style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-              >
-                <Maximize2 size={15} />
-                <span>Full Screen</span>
+        {/* Right: Formatted & highlighted output with find + folding */}
+        <div className={`code-panel ${isMaximized ? 'is-maximized' : ''}`} onKeyDown={handlePanelKeyDown}>
+          <div className="code-panel-header">
+            <span className="code-panel-title">
+              Output <span className="badge-lang">{language.toUpperCase()}</span>
+            </span>
+
+            <FindBar
+              inputRef={searchInputRef}
+              onQueryChange={setSearchQuery}
+              total={totalMatches}
+              current={currentMatchIndex}
+              onNext={handleNextMatch}
+              onPrev={handlePrevMatch}
+              matchCase={matchCase}
+              onToggleMatchCase={() => setMatchCase(v => !v)}
+              placeholder="Find in output (Ctrl+F)"
+            />
+
+            <div className="code-panel-actions">
+              {foldCount > 0 && (
+                <>
+                  <button className="btn btn-ghost btn-xs" onClick={handleExpandAll} title="Expand all">
+                    <ChevronsUpDown size={15} /><span className="hide-mobile-text">Expand</span>
+                  </button>
+                  <button className="btn btn-ghost btn-xs" onClick={handleCollapseAll} title="Collapse all">
+                    <ChevronsDownUp size={15} /><span className="hide-mobile-text">Collapse</span>
+                  </button>
+                </>
+              )}
+              <button className={`btn btn-ghost btn-xs ${wrapLines ? 'is-active' : ''}`} onClick={() => setWrapLines(v => !v)} title="Toggle word wrap" aria-pressed={wrapLines}>
+                <WrapText size={15} />
+              </button>
+              <button className="btn btn-ghost btn-xs" onClick={handleCopy} disabled={!activeCode} title="Copy output">
+                {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
+              </button>
+              <button className="btn btn-ghost btn-xs" onClick={handleDownload} disabled={!activeCode} title="Download output">
+                <Download size={15} />
+              </button>
+              <button className="btn btn-ghost btn-xs" onClick={() => setIsMaximized(v => !v)} title={isMaximized ? 'Exit full screen (Esc)' : 'Full screen'}>
+                {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               </button>
             </div>
-            <div className="code-editor-body highlighted-output-scroll" style={{ minHeight: '55vh', maxHeight: '55vh', overflow: 'auto', padding: '1rem', background: '#14151f' }}>
-              <pre style={{ margin: 0, background: 'transparent' }}>
-                <code ref={codeRef} className={prismLangClass}>
-                  {formattedCode || inputCode || '// Formatted output will appear here...'}
-                </code>
-              </pre>
+          </div>
+
+          <div className="code-panel-body">
+            <div ref={scrollRef} className={`code-view-scroll ${wrapLines ? 'wrap' : ''}`} tabIndex={0}>
+              {activeCode ? (
+                <CodeLines
+                  className={`code-view-lines language-${languagePrismMap[language] || 'javascript'}`}
+                  visibleLines={visibleLines}
+                  highlightedLines={highlightedLines}
+                  foldRanges={foldRanges}
+                  collapsedFolds={collapsedFolds}
+                  rangesByLine={rangesByLine}
+                  toggleFold={toggleFold}
+                />
+              ) : (
+                <div className="text-muted p-4 text-sm">Formatted output will appear here…</div>
+              )}
             </div>
+          </div>
+          <div className="code-panel-footer">
+            <span>{lineCount.toLocaleString()} lines{totalMatches > 0 ? ` · ${totalMatches.toLocaleString()} matches` : ''}</span>
+            <span>{activeCode.length.toLocaleString()} chars</span>
           </div>
         </div>
       </div>
-
-      {/* Full Screen View Overlay - Rendered via React Portal */}
-      {isFullScreen && createPortal(
-        <div className="fullscreen-overlay-page">
-          <div className="fullscreen-header">
-            {/* Title Section */}
-            <div className="fullscreen-title-area">
-              <FileJson size={20} style={{ color: 'var(--primary)' }} />
-              <span style={{ fontSize: '1rem', fontWeight: 700 }}>
-                Formatted View <span className="badge-lang ml-1">{language.toUpperCase()}</span>
-              </span>
-            </div>
-
-            {/* Expand / Collapse All & Search Bar */}
-            <div className="fullscreen-search-bar">
-              <div className="search-input-wrapper">
-                <Search size={15} className="search-icon" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  className="search-input"
-                  placeholder="Find text (e.g. &quot;version&quot;:)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                />
-                {searchQuery && (
-                  <button className="search-clear-btn" onClick={() => setSearchQuery('')} title="Clear search">
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              {/* Match Count Indicator */}
-              <div className="search-count-badge">
-                {totalMatches > 0 ? (
-                  <span>{currentMatchIndex + 1}/{totalMatches}</span>
-                ) : searchQuery ? (
-                  <span className="text-muted">0/0</span>
-                ) : (
-                  <span className="text-muted">Find</span>
-                )}
-              </div>
-
-              {/* Navigation Up & Down Arrows */}
-              <div className="flex items-center gap-1">
-                <button 
-                  className="btn btn-ghost btn-xs search-nav-btn"
-                  onClick={handlePrevMatch}
-                  disabled={totalMatches === 0}
-                  title="Previous match (Shift+Enter)"
-                >
-                  <ChevronUp size={15} />
-                </button>
-                <button 
-                  className="btn btn-ghost btn-xs search-nav-btn"
-                  onClick={handleNextMatch}
-                  disabled={totalMatches === 0}
-                  title="Next match (Enter)"
-                >
-                  <ChevronDown size={15} />
-                </button>
-              </div>
-            </div>
-
-            {/* Action Buttons: Expand/Collapse All, Copy, Close */}
-            <div className="fullscreen-actions">
-              <button 
-                className="btn btn-outline btn-sm fold-control-btn"
-                onClick={handleExpandAll}
-                title="Expand all collapsible ranges"
-              >
-                <ChevronsUpDown size={15} />
-                <span className="hide-mobile-text">Expand All</span>
-              </button>
-              <button 
-                className="btn btn-outline btn-sm fold-control-btn"
-                onClick={handleCollapseAll}
-                title="Collapse all sections"
-              >
-                <ChevronsDownUp size={15} />
-                <span className="hide-mobile-text">Collapse All</span>
-              </button>
-
-              <button className="btn btn-outline btn-sm" onClick={() => handleCopy(true)}>
-                {fullscreenCopied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
-                <span>{fullscreenCopied ? 'Copied' : 'Copy'}</span>
-              </button>
-
-              <button className="btn btn-ghost btn-sm close-modal-btn" onClick={closeFullScreen} title="Close Fullscreen (Esc)">
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-
-          {/* Full Screen Code Body with Line Gutter & Collapsible Ranges */}
-          <div className="fullscreen-code-body p-6" ref={modalCodeRef}>
-            <div className="code-lines-container font-mono text-sm" style={{ lineHeight: '1.6', background: '#090a0e' }}>
-              {highlightedLines.map((lineHtml, lineIdx) => {
-                const hasFold = foldRanges[lineIdx] !== undefined;
-                const isCollapsed = Boolean(collapsedFolds[lineIdx]);
-                const collapsedEnd = foldRanges[lineIdx];
-                const collapsedCount = collapsedEnd ? collapsedEnd - lineIdx : 0;
-                const isHidden = hiddenLinesSet.has(lineIdx);
-                const lineMatches = lineMatchesMap[lineIdx];
-
-                return (
-                  <CodeLineRow
-                    key={lineIdx}
-                    lineHtml={lineHtml}
-                    lineIdx={lineIdx}
-                    isHidden={isHidden}
-                    hasFold={hasFold}
-                    isCollapsed={isCollapsed}
-                    collapsedCount={collapsedCount}
-                    lineMatches={lineMatches}
-                    currentMatchIndex={currentMatchIndex}
-                    toggleFold={toggleFold}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      <style>{`
-        .formatter-split-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1rem;
-        }
-
-        .badge-lang {
-          background: rgba(99, 102, 241, 0.15);
-          color: var(--primary);
-          padding: 0.2rem 0.5rem;
-          border-radius: var(--radius-sm);
-          font-size: 0.75rem;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-        }
-
-        .fullscreen-overlay-page {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          width: 100%;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          background: #0a0a0f;
-          z-index: 999999;
-          display: flex;
-          flex-direction: column;
-          box-sizing: border-box;
-          overflow: hidden;
-        }
-
-        .fullscreen-header {
-          flex-shrink: 0;
-          background: #12131c;
-          border-bottom: 1px solid var(--border-light);
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-          padding: 0.6rem 1rem;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.75rem;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        .fullscreen-title-area {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-
-        .fullscreen-actions {
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
-          flex-shrink: 0;
-        }
-
-        .fullscreen-code-body {
-          flex: 1;
-          overflow: auto;
-          background: #090a0e;
-        }
-
-        .fullscreen-search-bar {
-          background: rgba(0, 0, 0, 0.4);
-          border: 1px solid var(--border-medium);
-          padding: 0.2rem 0.5rem;
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
-          flex: 1;
-          max-width: 420px;
-          box-sizing: border-box;
-        }
-
-        .search-input-wrapper {
-          position: relative;
-          flex: 1;
-          display: flex;
-          align-items: center;
-          min-width: 80px;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 0.4rem;
-          color: var(--text-muted);
-          pointer-events: none;
-        }
-
-        .search-input {
-          background: transparent;
-          border: none;
-          color: var(--text-primary);
-          padding: 0.3rem 1.6rem 0.3rem 1.8rem;
-          font-size: 0.85rem;
-          width: 100%;
-          outline: none;
-          font-family: inherit;
-        }
-
-        .search-clear-btn {
-          position: absolute;
-          right: 0.3rem;
-          background: transparent;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-        }
-
-        .search-clear-btn:hover {
-          color: var(--text-primary);
-        }
-
-        .search-count-badge {
-          font-size: 0.78rem;
-          font-weight: 600;
-          min-width: 45px;
-          text-align: center;
-          color: var(--text-secondary);
-          white-space: nowrap;
-        }
-
-        .search-nav-btn {
-          padding: 0.2rem;
-          border-radius: var(--radius-sm);
-        }
-
-        .code-line-row:hover {
-          background: rgba(255, 255, 255, 0.02);
-        }
-
-        /* Responsive Layout for Mobile and Tablet (<820px) */
-        @media (max-width: 820px) {
-          .fullscreen-header {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            grid-template-areas:
-              "title actions"
-              "search search";
-            gap: 0.5rem;
-            padding: 0.5rem 0.75rem;
-          }
-
-          .fullscreen-title-area {
-            grid-area: title;
-          }
-
-          .fullscreen-actions {
-            grid-area: actions;
-          }
-
-          .fullscreen-search-bar {
-            grid-area: search;
-            max-width: 100%;
-            width: 100%;
-          }
-
-          .formatter-split-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .block-mobile {
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: stretch !important;
-          }
-
-          .hide-mobile-text {
-            display: none;
-          }
-        }
-      `}</style>
     </div>
   );
 };

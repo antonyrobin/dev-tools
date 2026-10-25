@@ -20,7 +20,7 @@ const CodeOptimizer = () => {
   };
 
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
+    <div className="tool-page">
       <ToolHeader 
         title="Code Optimizer" 
         description="Refactor and optimize your code for better performance and readability."
@@ -28,15 +28,14 @@ const CodeOptimizer = () => {
         color="var(--warning)"
       />
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-        <div className="code-editor-container flex flex-col">
-          <div className="code-editor-header">
-            <span className="font-mono text-sm">Target Code</span>
+      <div className="editor-split">
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Target Code</span>
             <div className="flex gap-2">
               <UploadButton 
                 label="Upload"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
+                className="btn btn-ghost btn-xs"
                 onFileLoaded={(res) => setCode(res.content)}
               />
               <button className="btn btn-primary btn-sm" onClick={optimizeCode} disabled={!code} style={{ padding: '0.4rem 1rem' }}>
@@ -44,25 +43,29 @@ const CodeOptimizer = () => {
               </button>
             </div>
           </div>
+          <div className="code-panel-body">
           <CodeDropzoneTextarea
             value={code}
             onChange={(val) => setCode(val)}
             placeholder="Paste or drag & drop code file needing optimization..."
-            style={{ flex: 1, minHeight: '65vh' }}
+            lineNumbers
           />
+          </div>
         </div>
 
-        <div className="code-editor-container flex flex-col">
-          <div className="code-editor-header">
-            <span className="font-mono text-sm">Optimized Code</span>
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Optimized Code</span>
           </div>
-          <textarea
-            className="code-textarea text-warning"
-            readOnly
-            value={optimized}
-            placeholder="Optimized code will appear here..."
-            style={{ flex: 1, minHeight: '65vh', background: 'var(--bg-primary)' }}
-          />
+          <div className="code-panel-body">
+            <textarea
+              className="code-textarea text-warning"
+              readOnly
+              value={optimized}
+              placeholder="Optimized code will appear here..."
+              style={{ flex: 1, whiteSpace: 'pre', overflow: 'auto' }}
+            />
+          </div>
         </div>
       </div>
     </div>
