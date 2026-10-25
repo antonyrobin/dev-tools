@@ -1,91 +1,133 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Cpu, Play, Trash2 } from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
 
+const formatArg = (a) => {
+  if (typeof a === 'string') return a;
+  if (a instanceof Error) return `${a.name}: ${a.message}`;
+  try {
+    return JSON.stringify(a, null, 2);
+  } catch {
+    return String(a);
+  }
+};
+
 const CodeCompiler = () => {
   usePageTitle('Code Compiler');
-  const [code, setCode] = useState('// Write your JS code here\nconsole.log("Hello, World!");\n');
-  const [output, setOutput] = useState('');
+  const [code, setCode] = useState('// Write your JS code here\nconsole.log("Hello, World!");\nconsole.table?.([{ a: 1 }]);\nconsole.warn("Warnings are highlighted");\n');
+  const [logs, setLogs] = useState([]);
+  const [duration, setDuration] = useState(null);
 
-  const runCode = () => {
+  const runCode = async () => {
+    const captured = [];
+    const methods = ['log', 'info', 'warn', 'error', 'debug', 'table'];
+    const original = {};
+    methods.forEach((m) => {
+      original[m] = console[m];
+      console[m] = (...args) => captured.push({ level: m === 'table' || m === 'debug' ? 'log' : m, text: args.map(formatArg).join(' ') });
+    });
+
+    const start = performance.now();
     try {
-      const logs = [];
-      const originalLog = console.log;
-      
-      console.log = (...args) => {
-        logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
-      };
-
-      // eslint-disable-next-line no-new-func
-      const func = new Function(code);
-      func();
-
-      console.log = originalLog;
-      
-      setOutput(logs.join('\n') || 'Execution complete with no output.');
+      // Async wrapper so top-level await works in snippets
+      const func = new Function(`return (async () => {\n${code}\n})();`);
+      await func();
     } catch (err) {
-      setOutput(`Error: ${err.message}`);
+      captured.push({ level: 'error', text: `${err.name || 'Error'}: ${err.message}` });
+    } finally {
+      methods.forEach((m) => { console[m] = original[m]; });
     }
+    setDuration(performance.now() - start);
+    setLogs(captured.length ? captured : [{ level: 'info', text: 'Execution complete with no output.' }]);
   };
 
+  // Ctrl/Cmd+Enter runs the code
+  const runRef = useRef(runCode);
+  runRef.current = runCode;
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
-      <ToolHeader 
-        title="Code Compiler" 
-        description="Run JavaScript snippets directly in your browser."
+    <div className="tool-page">
+      <ToolHeader
+        title="JS Runner"
+        description="Run JavaScript snippets in your browser (top-level await supported). Press Ctrl+Enter to run."
         icon={Cpu}
         color="var(--success)"
       />
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-        {/* Editor */}
-        <div className="code-editor-container flex flex-col">
-          <div className="code-editor-header">
-            <span className="font-mono text-sm text-muted">Input (JS)</span>
-            <div className="flex gap-2">
-              <UploadButton 
-                label="Upload"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', border: '1px solid var(--border-light)' }}
-                onFileLoaded={(res) => setCode(res.content)}
-              />
-              <button className="btn btn-primary btn-sm" onClick={runCode} style={{ padding: '0.4rem 1rem' }}>
-                <Play size={16} /> Run
+      <div className="editor-split">
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Input <span className="badge-lang">JS</span></span>
+            <div className="code-panel-actions">
+              <UploadButton label="Upload" className="btn btn-ghost btn-xs" onFileLoaded={(res) => setCode(res.content)} />
+              <button className="btn btn-primary btn-sm" onClick={runCode} title="Run (Ctrl+Enter)">
+                <Play size={15} /> Run
               </button>
             </div>
           </div>
-          <CodeDropzoneTextarea
-            value={code}
-            onChange={(val) => setCode(val)}
-            placeholder="Paste or drag & drop JS code file..."
-            style={{ flex: 1, minHeight: '65vh' }}
-          />
+          <div className="code-panel-body">
+            <CodeDropzoneTextarea
+              value={code}
+              onChange={setCode}
+              placeholder="Paste or drag & drop JS code file..."
+              lineNumbers
+            />
+          </div>
         </div>
 
-        {/* Output Terminal */}
-        <div className="code-editor-container flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-          <div className="code-editor-header">
-            <span className="font-mono text-sm text-muted">Output Terminal</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setOutput('')} style={{ padding: '0.4rem 1rem' }}>
-              <Trash2 size={16} /> Clear
-            </button>
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title">Console</span>
+            <div className="code-panel-actions">
+              {duration !== null && <span className="text-xs text-muted">{duration.toFixed(1)} ms</span>}
+              <button className="btn btn-ghost btn-xs" onClick={() => { setLogs([]); setDuration(null); }} title="Clear console">
+                <Trash2 size={15} /> Clear
+              </button>
+            </div>
           </div>
-          <div 
-            className="p-4 font-mono text-sm"
-            style={{ 
-              flex: 1, 
-              minHeight: '65vh', 
-              color: output.startsWith('Error') ? 'var(--danger)' : 'var(--text-primary)',
-              whiteSpace: 'pre-wrap',
-              overflowY: 'auto'
-            }}
-          >
-            {output || <span className="text-muted">No output yet. Run your code!</span>}
+          <div className="code-panel-body console-output">
+            {logs.length === 0 ? (
+              <span className="text-muted">No output yet. Run your code!</span>
+            ) : (
+              logs.map((l, i) => (
+                <div key={i} className={`console-line console-${l.level}`}>{l.text}</div>
+              ))
+            )}
           </div>
         </div>
       </div>
+
+      <style>{`
+        .console-output {
+          overflow: auto;
+          padding: 0.5rem 0;
+          font-family: var(--font-mono);
+          font-size: var(--code-font-size);
+          line-height: var(--code-line-height);
+        }
+        .console-output > .text-muted { padding: 0.25rem 0.9rem; }
+        .console-line {
+          white-space: pre-wrap;
+          word-break: break-word;
+          padding: 0.15rem 0.9rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .console-warn { color: #fcd34d; background: rgba(245, 158, 11, 0.08); }
+        .console-error { color: #fca5a5; background: rgba(239, 68, 68, 0.08); }
+        .console-info { color: #93c5fd; }
+      `}</style>
     </div>
   );
 };

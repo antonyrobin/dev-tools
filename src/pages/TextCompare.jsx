@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ToolHeader from '../components/ToolHeader';
+import FindBar from '../components/FindBar';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { GitCompare, ArrowLeftRight, Trash2, PlusCircle, MinusCircle, AlertCircle, Sparkles, Maximize2, X, Search, ChevronUp, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  GitCompare, ArrowLeftRight, Trash2, PlusCircle, MinusCircle, AlertCircle, Sparkles,
+  Maximize2, Minimize2, ArrowUp, ArrowDown, Columns2, Rows2, EyeOff, RefreshCw, CheckCircle2
+} from 'lucide-react';
 import usePageTitle from '../hooks/usePageTitle';
+import useMaximize from '../hooks/useMaximize';
+import { computeDiff } from '../utils/diff';
+import { buildSearchRegex, scanLine, MAX_MATCHES } from '../utils/textSearch';
+import './TextCompare.css';
 
 const sampleOriginal = `{
   "appName": "DevTools",
@@ -31,1169 +38,622 @@ const sampleModified = `{
   "author": "DevTools Team"
 }`;
 
-// LCS Diff Algorithm with precomputed inline word diffs for high performance
-function computeDiff(origText, modText) {
-  const origLines = origText.split('\n');
-  const modLines = modText.split('\n');
+const EMPTY_DIFF = { rows: [], additionsCount: 0, deletionsCount: 0, modificationsCount: 0 };
+const CONTEXT_LINES = 3;
+const WORKER_THRESHOLD = 2000; // lines; smaller inputs are diffed synchronously
 
-  const M = origLines.length;
-  const N = modLines.length;
+/** Runs computeDiff in a Web Worker (falls back to the main thread if workers are unavailable). */
+function useDiffWorker() {
+  const workerRef = useRef(null);
+  const seqRef = useRef(0);
 
-  const dp = Array.from({ length: M + 1 }, () => Array(N + 1).fill(0));
+  useEffect(() => () => workerRef.current?.terminate(), []);
 
-  for (let i = 1; i <= M; i++) {
-    for (let j = 1; j <= N; j++) {
-      if (origLines[i - 1] === modLines[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+  return useCallback((original, modified, options) => {
+    const lines = original.length + modified.length > 0
+      ? original.split('\n').length + modified.split('\n').length
+      : 0;
+    if (lines < WORKER_THRESHOLD || typeof Worker === 'undefined') {
+      return Promise.resolve(computeDiff(original, modified, options));
+    }
+    if (!workerRef.current) {
+      try {
+        workerRef.current = new Worker(new URL('../utils/diff.worker.js', import.meta.url), { type: 'module' });
+      } catch {
+        return Promise.resolve(computeDiff(original, modified, options));
       }
     }
-  }
-
-  let i = M, j = N;
-  const rawOps = [];
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && origLines[i - 1] === modLines[j - 1]) {
-      rawOps.push({ type: 'equal', orig: origLines[i - 1], mod: modLines[j - 1], origIndex: i - 1, modIndex: j - 1 });
-      i--;
-      j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      rawOps.push({ type: 'add', mod: modLines[j - 1], modIndex: j - 1 });
-      j--;
-    } else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
-      rawOps.push({ type: 'remove', orig: origLines[i - 1], origIndex: i - 1 });
-      i--;
-    }
-  }
-  rawOps.reverse();
-
-  const rows = [];
-  let k = 0;
-  let additionsCount = 0;
-  let deletionsCount = 0;
-  let modificationsCount = 0;
-
-  while (k < rawOps.length) {
-    if (rawOps[k].type === 'equal') {
-      rows.push({
-        type: 'equal',
-        left: { lineNum: rawOps[k].origIndex + 1, content: rawOps[k].orig },
-        right: { lineNum: rawOps[k].modIndex + 1, content: rawOps[k].mod }
-      });
-      k++;
-    } else {
-      let removes = [];
-      let adds = [];
-
-      while (k < rawOps.length && rawOps[k].type === 'remove') {
-        removes.push(rawOps[k]);
-        k++;
-      }
-      while (k < rawOps.length && rawOps[k].type === 'add') {
-        adds.push(rawOps[k]);
-        k++;
-      }
-
-      if (removes.length > 0 && adds.length > 0) {
-        const maxLen = Math.max(removes.length, adds.length);
-        for (let m = 0; m < maxLen; m++) {
-          const rem = removes[m];
-          const add = adds[m];
-          if (rem && add) {
-            const inline = computeInlineWordDiff(rem.orig, add.mod);
-            rows.push({
-              type: 'modify',
-              left: { lineNum: rem.origIndex + 1, content: rem.orig },
-              right: { lineNum: add.modIndex + 1, content: add.mod },
-              leftTokens: inline.leftTokens,
-              rightTokens: inline.rightTokens
-            });
-            modificationsCount++;
-          } else if (rem) {
-            rows.push({
-              type: 'remove',
-              left: { lineNum: rem.origIndex + 1, content: rem.orig },
-              right: null
-            });
-            deletionsCount++;
-          } else if (add) {
-            rows.push({
-              type: 'add',
-              left: null,
-              right: { lineNum: add.modIndex + 1, content: add.mod }
-            });
-            additionsCount++;
-          }
-        }
-      } else if (removes.length > 0) {
-        for (const rem of removes) {
-          rows.push({
-            type: 'remove',
-            left: { lineNum: rem.origIndex + 1, content: rem.orig },
-            right: null
-          });
-          deletionsCount++;
-        }
-      } else if (adds.length > 0) {
-        for (const add of adds) {
-          rows.push({
-            type: 'add',
-            left: null,
-            right: { lineNum: add.modIndex + 1, content: add.mod }
-          });
-          additionsCount++;
-        }
-      }
-    }
-  }
-
-  return { rows, additionsCount, deletionsCount, modificationsCount };
-}
-
-// Inline Word Diff for Modified lines
-function computeInlineWordDiff(origStr, modStr) {
-  const origTokens = origStr.split(/(\s+|[^\w\s]+)/).filter(Boolean);
-  const modTokens = modStr.split(/(\s+|[^\w\s]+)/).filter(Boolean);
-
-  const M = origTokens.length;
-  const N = modTokens.length;
-  const dp = Array.from({ length: M + 1 }, () => Array(N + 1).fill(0));
-
-  for (let i = 1; i <= M; i++) {
-    for (let j = 1; j <= N; j++) {
-      if (origTokens[i - 1] === modTokens[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-
-  let i = M, j = N;
-  const leftResult = [];
-  const rightResult = [];
-
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && origTokens[i - 1] === modTokens[j - 1]) {
-      leftResult.push({ text: origTokens[i - 1], type: 'same' });
-      rightResult.push({ text: modTokens[j - 1], type: 'same' });
-      i--; j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      rightResult.push({ text: modTokens[j - 1], type: 'add' });
-      j--;
-    } else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
-      leftResult.push({ text: origTokens[i - 1], type: 'remove' });
-      i--;
-    }
-  }
-
-  leftResult.reverse();
-  rightResult.reverse();
-
-  return { leftTokens: leftResult, rightTokens: rightResult };
-}
-
-/**
- * Pure React text search & highlighting helper for plain text
- */
-function renderTextWithMatches(text, paneMatches, activeMatchIdx) {
-  if (!text) return '';
-  if (!paneMatches || paneMatches.length === 0) return text;
-
-  const elements = [];
-  let lastIdx = 0;
-  const sorted = [...paneMatches].sort((a, b) => a.startCol - b.startCol);
-
-  sorted.forEach((m) => {
-    if (m.startCol > lastIdx) {
-      elements.push(text.substring(lastIdx, m.startCol));
-    }
-    const isActive = m.matchIndex === activeMatchIdx;
-    elements.push(
-      <mark
-        key={`m-${m.matchIndex}-${m.startCol}`}
-        className={isActive ? 'search-match search-match-active' : 'search-match'}
-        data-match-idx={m.matchIndex}
-      >
-        {text.substring(m.startCol, m.endCol)}
-      </mark>
-    );
-    lastIdx = m.endCol;
-  });
-
-  if (lastIdx < text.length) {
-    elements.push(text.substring(lastIdx));
-  }
-
-  return elements;
-}
-
-/**
- * Pure React text search & highlighting helper for inline word diff tokens
- */
-function renderTokensWithMatches(tokens, paneMatches, activeMatchIdx, tokenTypeClass) {
-  if (!tokens) return null;
-  if (!paneMatches || paneMatches.length === 0) {
-    return tokens.map((tok, i) => (
-      <span key={i} className={tok.type === tokenTypeClass ? (tokenTypeClass === 'remove' ? 'inline-word-remove' : 'inline-word-add') : ''}>
-        {tok.text}
-      </span>
-    ));
-  }
-
-  let currentCol = 0;
-  return tokens.map((tok, tokIdx) => {
-    const tokStart = currentCol;
-    const tokEnd = currentCol + tok.text.length;
-    currentCol = tokEnd;
-
-    const overlapping = paneMatches.filter(m => m.endCol > tokStart && m.startCol < tokEnd);
-    const tokClass = tok.type === tokenTypeClass ? (tokenTypeClass === 'remove' ? 'inline-word-remove' : 'inline-word-add') : '';
-
-    if (overlapping.length === 0) {
-      return (
-        <span key={tokIdx} className={tokClass}>
-          {tok.text}
-        </span>
-      );
-    }
-
-    const parts = [];
-    let lastIdx = 0;
-    overlapping.forEach(m => {
-      const relStart = Math.max(0, m.startCol - tokStart);
-      const relEnd = Math.min(tok.text.length, m.endCol - tokStart);
-
-      if (relStart > lastIdx) {
-        parts.push(tok.text.substring(lastIdx, relStart));
-      }
-      const isActive = m.matchIndex === activeMatchIdx;
-      parts.push(
-        <mark
-          key={`tm-${m.matchIndex}-${relStart}`}
-          className={isActive ? 'search-match search-match-active' : 'search-match'}
-          data-match-idx={m.matchIndex}
-        >
-          {tok.text.substring(relStart, relEnd)}
-        </mark>
-      );
-      lastIdx = relEnd;
+    const id = ++seqRef.current;
+    const worker = workerRef.current;
+    return new Promise((resolve, reject) => {
+      const onMessage = (e) => {
+        if (e.data.id !== id) return;
+        worker.removeEventListener('message', onMessage);
+        if (e.data.error) reject(new Error(e.data.error));
+        else resolve(e.data.result);
+      };
+      worker.addEventListener('message', onMessage);
+      worker.postMessage({ id, original, modified, options });
     });
-
-    if (lastIdx < tok.text.length) {
-      parts.push(tok.text.substring(lastIdx));
-    }
-
-    return (
-      <span key={tokIdx} className={tokClass}>
-        {parts}
-      </span>
-    );
-  });
+  }, []);
 }
 
 /**
- * Memoized Diff Row Component to prevent un-needed re-renders during search
+ * Renders text (or inline-diff tokens) with search highlights.
+ * ranges: sorted [{ start, end, idx }] in plain-text offsets of the full line.
  */
-const DiffRow = React.memo(({ row, idx, leftMatches, rightMatches, currentMatchIndex, isFocused }) => {
-  let rowClass = 'diff-row-equal';
-  if (row.type === 'add') rowClass = 'diff-row-add';
-  if (row.type === 'remove') rowClass = 'diff-row-remove';
-  if (row.type === 'modify') rowClass = 'diff-row-modify';
+function renderContent(tokens, ranges, changedType) {
+  if (!tokens || tokens.length === 0) return null;
+  const changedClass = changedType === 'remove' ? 'inline-word-remove' : 'inline-word-add';
+  const out = [];
+  let pos = 0;
+  let r = 0;
+
+  tokens.forEach((tok, tokIdx) => {
+    const tStart = pos;
+    const tEnd = pos + tok.text.length;
+    const cls = tok.type === changedType ? changedClass : undefined;
+
+    if (!ranges || r >= ranges.length || ranges[r].start >= tEnd) {
+      out.push(cls ? <span key={tokIdx} className={cls}>{tok.text}</span> : tok.text);
+    } else {
+      const parts = [];
+      let cur = tStart;
+      while (r < ranges.length && ranges[r].start < tEnd) {
+        const s = Math.max(ranges[r].start, cur);
+        const e = Math.min(ranges[r].end, tEnd);
+        if (s > cur) parts.push(tok.text.slice(cur - tStart, s - tStart));
+        parts.push(
+          <mark key={`${ranges[r].idx}-${s}`} className="search-match" data-match-idx={ranges[r].idx}>
+            {tok.text.slice(s - tStart, e - tStart)}
+          </mark>
+        );
+        cur = e;
+        if (ranges[r].end <= tEnd) r++;
+        else break;
+      }
+      if (cur < tEnd) parts.push(tok.text.slice(cur - tStart));
+      out.push(<span key={tokIdx} className={cls}>{parts}</span>);
+    }
+    pos = tEnd;
+  });
+  return out;
+}
+
+const plainTokens = (text) => (text ? [{ text, type: 'same' }] : null);
+
+const SIDE_CLASS = { add: 'pane-added', remove: 'pane-removed', modify: 'pane-modified' };
+
+/**
+ * Side-by-side row. Only rows whose own match ranges change re-render; the active match
+ * and the focused change block are applied directly to the DOM (see the layout effects).
+ */
+const SplitRow = React.memo(({ row, rowIdx, leftRanges, rightRanges }) => (
+  <div data-row={rowIdx} className={`diff-row split diff-row-${row.type}`}>
+    <div className={`diff-cell ${row.left ? (row.type !== 'equal' ? SIDE_CLASS[row.type] : '') : 'pane-empty'}`}>
+      <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
+      <span className="line-marker">{row.type === 'remove' || row.type === 'modify' ? '−' : ''}</span>
+      <span className="line-content">
+        {row.left && renderContent(row.leftTokens || plainTokens(row.left.content), leftRanges, 'remove')}
+      </span>
+    </div>
+    <div className={`diff-cell ${row.right ? (row.type !== 'equal' ? SIDE_CLASS[row.type] : '') : 'pane-empty'}`}>
+      <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
+      <span className="line-marker">{row.type === 'add' || row.type === 'modify' ? '+' : ''}</span>
+      <span className="line-content">
+        {row.right && renderContent(row.rightTokens || plainTokens(row.right.content), rightRanges, 'add')}
+      </span>
+    </div>
+  </div>
+));
+
+/** Unified (single column) line: shows one side of a row. */
+const UnifiedLine = React.memo(({ row, rowIdx, side, ranges }) => {
+  const isLeft = side === 'left';
+  const kind = row.type === 'equal' ? 'equal' : isLeft ? 'remove' : 'add';
+  const tokens = isLeft
+    ? (row.leftTokens || plainTokens(row.left?.content))
+    : (row.rightTokens || plainTokens(row.right?.content));
 
   return (
-    <div id={`diff-row-${idx}`} className={`diff-split-row ${rowClass} ${isFocused ? 'diff-row-focused' : ''}`}>
-      {/* Left Pane (Original) */}
-      <div className={`diff-pane left-pane ${row.type === 'remove' ? 'pane-removed' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-        <span className="line-num">{row.left ? row.left.lineNum : ''}</span>
-        <span className="line-content">
-          {row.leftTokens ? (
-            renderTokensWithMatches(row.leftTokens, leftMatches, currentMatchIndex, 'remove')
-          ) : (
-            renderTextWithMatches(row.left ? row.left.content : '', leftMatches, currentMatchIndex)
-          )}
-        </span>
-      </div>
-
-      {/* Right Pane (Modified) */}
-      <div className={`diff-pane right-pane ${row.type === 'add' ? 'pane-added' : row.type === 'modify' ? 'pane-modified' : ''}`}>
-        <span className="line-num">{row.right ? row.right.lineNum : ''}</span>
-        <span className="line-content">
-          {row.rightTokens ? (
-            renderTokensWithMatches(row.rightTokens, rightMatches, currentMatchIndex, 'add')
-          ) : (
-            renderTextWithMatches(row.right ? row.right.content : '', rightMatches, currentMatchIndex)
-          )}
-        </span>
-      </div>
+    <div data-row={rowIdx} data-side={side} className={`diff-row unified diff-line-${kind}`}>
+      <span className="line-num">{row.left && (row.type === 'equal' || isLeft) ? row.left.lineNum : ''}</span>
+      <span className="line-num">{row.right && (row.type === 'equal' || !isLeft) ? row.right.lineNum : ''}</span>
+      <span className="line-marker">{kind === 'remove' ? '−' : kind === 'add' ? '+' : ''}</span>
+      <span className="line-content">{renderContent(tokens, ranges, isLeft ? 'remove' : 'add')}</span>
     </div>
   );
+});
+
+/** All diff rows; memoized so navigation state changes in the parent skip it entirely. */
+const DiffRows = React.memo(({ displayItems, rows, rangesByKey, viewMode, onShowAll }) => {
+  const out = [];
+  for (const item of displayItems) {
+    if (item.kind === 'gap') {
+      out.push(
+        <button type="button" key={item.key} className="diff-gap" onClick={onShowAll} title="Show all lines">
+          ⋯ {item.count.toLocaleString()} unchanged line{item.count === 1 ? '' : 's'} hidden
+        </button>
+      );
+      continue;
+    }
+    const { rowIdx } = item;
+    const row = rows[rowIdx];
+    if (viewMode === 'split') {
+      out.push(
+        <SplitRow
+          key={rowIdx}
+          row={row}
+          rowIdx={rowIdx}
+          leftRanges={rangesByKey.get(`${rowIdx}-left`)}
+          rightRanges={rangesByKey.get(`${rowIdx}-right`)}
+        />
+      );
+    } else if (row.type === 'equal') {
+      out.push(<UnifiedLine key={rowIdx} row={row} rowIdx={rowIdx} side="right" ranges={rangesByKey.get(`${rowIdx}-right`)} />);
+    } else {
+      if (row.left) out.push(<UnifiedLine key={`${rowIdx}-l`} row={row} rowIdx={rowIdx} side="left" ranges={rangesByKey.get(`${rowIdx}-left`)} />);
+      if (row.right) out.push(<UnifiedLine key={`${rowIdx}-r`} row={row} rowIdx={rowIdx} side="right" ranges={rangesByKey.get(`${rowIdx}-right`)} />);
+    }
+  }
+  return out;
 });
 
 const TextCompare = () => {
   usePageTitle('Text Comparison');
   const [originalText, setOriginalText] = useState(sampleOriginal);
   const [modifiedText, setModifiedText] = useState(sampleModified);
-  const [diffResult, setDiffResult] = useState(computeDiff(sampleOriginal, sampleModified));
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [diffResult, setDiffResult] = useState(() => computeDiff(sampleOriginal, sampleModified));
+  const [isComparing, setIsComparing] = useState(false);
+  const [error, setError] = useState(null);
+  const [isStale, setIsStale] = useState(false);
 
-  // Search states with 200ms debounce
+  // View options
+  const [viewMode, setViewMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 900 ? 'unified' : 'split'));
+  const [hideUnchanged, setHideUnchanged] = useState(false);
+  const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
+  const [ignoreCase, setIgnoreCase] = useState(false);
+  const [isMaximized, setIsMaximized] = useMaximize();
+
+  // Find state (query is debounced inside FindBar)
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
-  // Next / Previous Modification Change navigation states (Full view only)
-  const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
+  // Change navigation
+  const [currentChangeIndex, setCurrentChangeIndex] = useState(-1);
 
+  const scrollRef = useRef(null);
   const resultRef = useRef(null);
-  const modalDiffContainerRef = useRef(null);
   const searchInputRef = useRef(null);
-  const fullscreenCodeBodyRef = useRef(null);
+  const runDiff = useDiffWorker();
 
-  // Debounce search query input to prevent UI lag on large text
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 200);
-    return () => clearTimeout(handler);
-  }, [searchQuery]);
+  const { rows } = diffResult;
 
-  // Compute contiguous modification blocks (changes)
+  // Contiguous non-equal rows form one navigable change block
   const changeBlocks = useMemo(() => {
-    if (!diffResult.rows || diffResult.rows.length === 0) return [];
     const blocks = [];
-    let currentBlock = null;
-
-    diffResult.rows.forEach((row, rowIdx) => {
+    let current = null;
+    rows.forEach((row, rowIdx) => {
       if (row.type !== 'equal') {
-        if (!currentBlock) {
-          currentBlock = { startRowIdx: rowIdx, endRowIdx: rowIdx, type: row.type };
-          blocks.push(currentBlock);
+        if (!current) {
+          current = { start: rowIdx, end: rowIdx };
+          blocks.push(current);
         } else {
-          currentBlock.endRowIdx = rowIdx;
+          current.end = rowIdx;
         }
       } else {
-        currentBlock = null;
+        current = null;
       }
     });
-
     return blocks;
-  }, [diffResult.rows]);
+  }, [rows]);
 
-  // Compute search matches efficiently without DOM mutation (handles special characters like :, -, * properly)
-  const searchMatches = useMemo(() => {
-    if (!debouncedSearchQuery.trim()) return [];
-    const query = debouncedSearchQuery;
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let regex;
-    try {
-      regex = new RegExp(escaped, 'gi');
-    } catch {
-      return [];
+  // Row indices to display; with "hide unchanged" only changes plus context are kept
+  const displayItems = useMemo(() => {
+    if (!hideUnchanged || changeBlocks.length === 0) {
+      return rows.map((_, rowIdx) => ({ kind: 'row', rowIdx }));
     }
-
-    const matches = [];
-    let matchCount = 0;
-
-    diffResult.rows.forEach((row, rowIdx) => {
-      if (row.left?.content) {
-        const text = row.left.content;
-        regex.lastIndex = 0;
-        let m;
-        while ((m = regex.exec(text)) !== null) {
-          if (m[0].length === 0) { regex.lastIndex++; continue; }
-          matches.push({
-            matchIndex: matchCount++,
-            rowIdx,
-            side: 'left',
-            startCol: m.index,
-            endCol: m.index + m[0].length,
-            text: m[0]
-          });
-        }
+    const keep = new Uint8Array(rows.length);
+    for (const b of changeBlocks) {
+      const from = Math.max(0, b.start - CONTEXT_LINES);
+      const to = Math.min(rows.length - 1, b.end + CONTEXT_LINES);
+      for (let i = from; i <= to; i++) keep[i] = 1;
+    }
+    const items = [];
+    let gap = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (keep[i]) {
+        if (gap) { items.push({ kind: 'gap', count: gap, key: `gap-${i}` }); gap = 0; }
+        items.push({ kind: 'row', rowIdx: i });
+      } else {
+        gap++;
       }
+    }
+    if (gap) items.push({ kind: 'gap', count: gap, key: 'gap-end' });
+    return items;
+  }, [rows, changeBlocks, hideUnchanged]);
 
-      if (row.right?.content) {
-        const text = row.right.content;
-        regex.lastIndex = 0;
-        let m;
-        while ((m = regex.exec(text)) !== null) {
-          if (m[0].length === 0) { regex.lastIndex++; continue; }
-          matches.push({
-            matchIndex: matchCount++,
-            rowIdx,
-            side: 'right',
-            startCol: m.index,
-            endCol: m.index + m[0].length,
-            text: m[0]
-          });
-        }
-      }
+  // Search over the displayed content. Unified view shows equal rows once (right side).
+  const { rangesByKey, matchesList } = useMemo(() => {
+    const regex = buildSearchRegex(searchQuery, { matchCase });
+    if (!regex) return { rangesByKey: new Map(), matchesList: [] };
+
+    const byKey = new Map();
+    const list = [];
+    const scan = (rowIdx, side, text) => scanLine(regex, text, (start, end) => {
+      const m = { idx: list.length, rowIdx, side, start, end };
+      list.push(m);
+      const key = `${rowIdx}-${side}`;
+      let arr = byKey.get(key);
+      if (!arr) byKey.set(key, (arr = []));
+      arr.push(m);
+      return list.length < MAX_MATCHES;
     });
 
-    return matches;
-  }, [diffResult.rows, debouncedSearchQuery]);
+    for (const item of displayItems) {
+      if (item.kind !== 'row') continue;
+      const row = rows[item.rowIdx];
+      const searchLeft = row.left && (viewMode === 'split' || row.type !== 'equal');
+      if (searchLeft && !scan(item.rowIdx, 'left', row.left.content)) break;
+      if (row.right && !scan(item.rowIdx, 'right', row.right.content)) break;
+    }
+    return { rangesByKey: byKey, matchesList: list };
+  }, [rows, displayItems, searchQuery, matchCase, viewMode]);
 
-  // Group search matches by rowIdx and side for O(1) render lookup
-  const matchesByRowAndSide = useMemo(() => {
-    const map = {};
-    searchMatches.forEach((m) => {
-      const key = `${m.rowIdx}-${m.side}`;
-      if (!map[key]) map[key] = [];
-      map[key].push(m);
-    });
-    return map;
-  }, [searchMatches]);
+  const totalMatches = matchesList.length;
+  const activeMatch = totalMatches > 0 ? matchesList[Math.min(currentMatchIndex, totalMatches - 1)] : null;
 
-  const totalMatches = searchMatches.length;
-
-  // Reset search match index when query or diff changes
   useEffect(() => {
     setCurrentMatchIndex(0);
-  }, [debouncedSearchQuery, diffResult]);
+  }, [searchQuery, matchCase, diffResult, viewMode, hideUnchanged]);
 
   useEffect(() => {
-    setCurrentChangeIndex(0);
+    setCurrentChangeIndex(-1);
   }, [diffResult]);
 
-  // Scroll to active search match inside modal scroll container
-  useEffect(() => {
+  /**
+   * Scrolls the diff viewport (never the page) so the row is centred.
+   * Off-screen rows use estimated heights (content-visibility), so a second pass corrects drift.
+   */
+  const scrollToRow = useCallback((rowIdx, side) => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const align = () => {
+      const el = (side && viewMode === 'unified' && container.querySelector(`[data-row="${rowIdx}"][data-side="${side}"]`))
+        || container.querySelector(`[data-row="${rowIdx}"]`);
+      if (!el) return;
+      container.scrollTop = el.offsetTop - container.clientHeight / 3;
+    };
+    align();
+    requestAnimationFrame(() => requestAnimationFrame(align));
+  }, [viewMode]);
+
+  const showAllLines = useCallback(() => setHideUnchanged(false), []);
+  const activeBlock = currentChangeIndex >= 0 ? changeBlocks[currentChangeIndex] : null;
+
+  // Active search match: toggled on the <mark> directly (no React re-render of rows)
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.querySelectorAll('.search-match-active').forEach((el) => el.classList.remove('search-match-active'));
+    if (!activeMatch) return;
+    const mark = container.querySelector(`mark[data-match-idx="${activeMatch.idx}"]`);
+    if (mark) {
+      mark.classList.add('search-match-active');
+      const row = mark.closest('[data-row]');
+      container.scrollTop = row.offsetTop - container.clientHeight / 3;
+    } else {
+      scrollToRow(activeMatch.rowIdx, activeMatch.side);
+    }
+  }, [activeMatch, rangesByKey, displayItems, viewMode, scrollToRow]);
+
+  // Focused change block outline, also applied directly to the DOM
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.querySelectorAll('.diff-row-focused').forEach((el) => el.classList.remove('diff-row-focused'));
+    if (!activeBlock) return;
+    for (let i = activeBlock.start; i <= activeBlock.end; i++) {
+      container.querySelectorAll(`[data-row="${i}"]`).forEach((el) => el.classList.add('diff-row-focused'));
+    }
+  }, [activeBlock, displayItems, viewMode]);
+
+  const goToChange = useCallback((idx) => {
+    if (changeBlocks.length === 0) return;
+    const wrapped = (idx + changeBlocks.length) % changeBlocks.length;
+    setCurrentChangeIndex(wrapped);
+    scrollToRow(changeBlocks[wrapped].start);
+  }, [changeBlocks, scrollToRow]);
+
+  const handleNextChange = useCallback(() => goToChange(currentChangeIndex + 1), [goToChange, currentChangeIndex]);
+  const handlePrevChange = useCallback(() => goToChange(currentChangeIndex <= 0 ? changeBlocks.length - 1 : currentChangeIndex - 1), [goToChange, currentChangeIndex, changeBlocks.length]);
+
+  const handleNextMatch = useCallback(() => {
     if (totalMatches === 0) return;
-    const validIdx = Math.min(Math.max(0, currentMatchIndex), totalMatches - 1);
-    const activeMatch = searchMatches[validIdx];
-    if (activeMatch) {
+    setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
+  }, [totalMatches]);
+
+  const handlePrevMatch = useCallback(() => {
+    if (totalMatches === 0) return;
+    setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
+  }, [totalMatches]);
+
+  const handleCompare = useCallback(async (orig = originalText, mod = modifiedText) => {
+    setIsComparing(true);
+    setError(null);
+    try {
+      const res = await runDiff(orig, mod, { ignoreWhitespace, ignoreCase });
+      setDiffResult(res);
+      setIsStale(false);
       requestAnimationFrame(() => {
-        const container = fullscreenCodeBodyRef.current;
-        const markEl = container ? container.querySelector(`mark[data-match-idx="${validIdx}"]`) : null;
-        const targetEl = markEl || document.getElementById(`diff-row-${activeMatch.rowIdx}`);
-
-        if (container && targetEl) {
-          const containerRect = container.getBoundingClientRect();
-          const elRect = targetEl.getBoundingClientRect();
-          const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-          const targetScrollTop = Math.max(0, relativeTop - 30);
-
-          container.scrollTo({
-            top: targetScrollTop,
-            behavior: 'smooth'
-          });
-        }
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (scrollRef.current) scrollRef.current.scrollTop = 0;
       });
+    } catch (err) {
+      setError(err.message || 'Comparison failed');
+    } finally {
+      setIsComparing(false);
     }
-  }, [currentMatchIndex, totalMatches, searchMatches]);
+  }, [originalText, modifiedText, runDiff, ignoreWhitespace, ignoreCase]);
 
-  // Scroll to target modification change block cleanly inside full view scroll container
-  const scrollToChangeBlock = useCallback((blockIdx) => {
-    if (!changeBlocks || changeBlocks.length === 0 || blockIdx < 0 || blockIdx >= changeBlocks.length) return;
-    const targetRowIdx = changeBlocks[blockIdx].startRowIdx;
-    requestAnimationFrame(() => {
-      const container = fullscreenCodeBodyRef.current;
-      const rowEl = document.getElementById(`diff-row-${targetRowIdx}`);
-      if (!container || !rowEl) return;
-
-      const containerRect = container.getBoundingClientRect();
-      const rowRect = rowEl.getBoundingClientRect();
-      const relativeTop = rowRect.top - containerRect.top + container.scrollTop;
-      const targetScrollTop = Math.max(0, relativeTop - 30);
-
-      container.scrollTo({
-        top: targetScrollTop,
-        behavior: 'smooth'
-      });
-    });
-  }, [changeBlocks]);
-
-  // Auto-focus Change 1 (index 0) upon opening Full View
+  // Re-run when comparison options change
+  const optionsKey = `${ignoreWhitespace}-${ignoreCase}`;
+  const lastOptionsKey = useRef(optionsKey);
   useEffect(() => {
-    if (isFullScreen && changeBlocks.length > 0) {
-      setCurrentChangeIndex(0);
-      const timer = setTimeout(() => {
-        scrollToChangeBlock(0);
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [isFullScreen, changeBlocks, scrollToChangeBlock]);
-
-  const handleNextChange = () => {
-    if (changeBlocks.length === 0) return;
-    const nextIdx = Math.min(currentChangeIndex + 1, changeBlocks.length - 1);
-    setCurrentChangeIndex(nextIdx);
-    scrollToChangeBlock(nextIdx);
-  };
-
-  const handlePrevChange = () => {
-    if (changeBlocks.length === 0) return;
-    const prevIdx = Math.max(0, currentChangeIndex - 1);
-    setCurrentChangeIndex(prevIdx);
-    scrollToChangeBlock(prevIdx);
-  };
-
-  // Compute diff and open full view popup by default on compare
-  const handleCompare = () => {
-    const res = computeDiff(originalText, modifiedText);
-    setDiffResult(res);
-    setIsFullScreen(true);
-  };
+    if (lastOptionsKey.current === optionsKey) return;
+    lastOptionsKey.current = optionsKey;
+    handleCompare();
+  }, [optionsKey, handleCompare]);
 
   const handleSwap = () => {
-    const temp = originalText;
     setOriginalText(modifiedText);
-    setModifiedText(temp);
-    setDiffResult(computeDiff(modifiedText, temp));
+    setModifiedText(originalText);
+    handleCompare(modifiedText, originalText);
   };
 
   const handleClear = () => {
     setOriginalText('');
     setModifiedText('');
-    setDiffResult({ rows: [], additionsCount: 0, deletionsCount: 0, modificationsCount: 0 });
+    setDiffResult(EMPTY_DIFF);
+    setIsStale(false);
   };
 
   const handleLoadSample = () => {
     setOriginalText(sampleOriginal);
     setModifiedText(sampleModified);
-    setDiffResult(computeDiff(sampleOriginal, sampleModified));
+    handleCompare(sampleOriginal, sampleModified);
   };
 
-  const closeFullScreen = useCallback(() => {
-    setIsFullScreen(false);
-    setSearchQuery('');
-    setCurrentMatchIndex(0);
+  // Ctrl/Cmd+Enter compares from anywhere on the page
+  const compareRef = useRef(handleCompare);
+  compareRef.current = handleCompare;
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        compareRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Lock body & documentElement scroll on Full Screen
-  useEffect(() => {
-    if (isFullScreen) {
-      document.body.style.overflow = 'hidden';
-      document.documentElement.style.overflow = 'hidden';
-      window.scrollTo(0, 0);
-      setTimeout(() => {
-        if (searchInputRef.current) {
-          searchInputRef.current.focus();
-        }
-      }, 100);
-    } else {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-    };
-  }, [isFullScreen]);
-
-  const handleNextMatch = () => {
-    if (totalMatches === 0) return;
-    setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
-  };
-
-  const handlePrevMatch = () => {
-    if (totalMatches === 0) return;
-    setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
-  };
-
-  const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter') {
+  // Keyboard shortcuts inside the result panel
+  const handlePanelKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      if (e.shiftKey) {
-        handlePrevMatch();
-      } else {
-        handleNextMatch();
-      }
-    } else if (e.key === 'Escape') {
-      if (searchQuery) {
-        e.stopPropagation();
-        setSearchQuery('');
-      } else {
-        closeFullScreen();
-      }
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    } else if (e.key === 'F7' || (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp'))) {
+      e.preventDefault();
+      if (e.shiftKey || e.key === 'ArrowUp') handlePrevChange(); else handleNextChange();
+    } else if (e.key === 'F3') {
+      e.preventDefault();
+      if (e.shiftKey) handlePrevMatch(); else handleNextMatch();
     }
   };
 
-  // Esc key listener
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullScreen && !searchQuery) {
-        closeFullScreen();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullScreen, searchQuery, closeFullScreen]);
 
-  // Shared Diff Table Component
-  const renderDiffTable = (containerRef = null) => {
-    const activeChangeBlock = changeBlocks[currentChangeIndex];
-
-    return (
-      <div className="diff-split-container" ref={containerRef}>
-        <div className="diff-split-header">
-          <div className="diff-split-col-header">Original Text</div>
-          <div className="diff-split-col-header">Modified Text</div>
-        </div>
-
-        <div className="diff-split-rows">
-          {diffResult.rows.map((row, idx) => {
-            const isFocused = isFullScreen && activeChangeBlock && idx >= activeChangeBlock.startRowIdx && idx <= activeChangeBlock.endRowIdx;
-            const leftMatches = matchesByRowAndSide[`${idx}-left`];
-            const rightMatches = matchesByRowAndSide[`${idx}-right`];
-
-            return (
-              <DiffRow
-                key={idx}
-                row={row}
-                idx={idx}
-                leftMatches={leftMatches}
-                rightMatches={rightMatches}
-                currentMatchIndex={currentMatchIndex}
-                isFocused={isFocused}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  const identical = rows.length > 0 && changeBlocks.length === 0;
+  const totalChanges = diffResult.additionsCount + diffResult.deletionsCount + diffResult.modificationsCount;
 
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
-      <ToolHeader 
-        title="Text Comparison" 
-        description="Compare two texts side-by-side with color-coded indications for additions, deletions, and inline modifications."
+    <div className="tool-page">
+      <ToolHeader
+        title="Text Compare"
+        description="Compare two texts with side-by-side or unified diffs, inline word changes, change navigation and fast find."
         icon={GitCompare}
         color="var(--accent)"
       />
 
-      {/* Control Buttons & Inputs */}
-      <div className="glass-card p-6 mb-6" style={{ padding: '1.5rem' }}>
-        {/* Responsive Control Bar */}
-        <div className="flex justify-between items-center mb-4 block-mobile gap-3">
-          <div className="tool-controls-bar">
-            <button className="btn btn-ghost btn-sm" onClick={handleLoadSample}>
-              <Sparkles size={16} /> <span>Sample</span>
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={handleSwap} title="Swap Original and Modified">
-              <ArrowLeftRight size={16} /> <span>Swap</span>
-            </button>
-            <UploadButton 
-              label="Upload Orig" 
-              className="btn btn-outline btn-sm"
-              onFileLoaded={(res) => setOriginalText(res.content)}
-            />
-            <UploadButton 
-              label="Upload Mod" 
-              className="btn btn-outline btn-sm"
-              onFileLoaded={(res) => setModifiedText(res.content)}
-            />
-            <button className="btn btn-ghost btn-sm" onClick={handleClear} style={{ color: 'var(--danger)' }}>
-              <Trash2 size={16} /> <span>Clear</span>
-            </button>
-          </div>
+      {/* Controls */}
+      <div className="tool-toolbar">
+        <div className="tool-toolbar-group">
+          <button className="btn btn-ghost btn-sm" onClick={handleLoadSample}>
+            <Sparkles size={15} /> <span>Sample</span>
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={handleSwap} title="Swap original and modified">
+            <ArrowLeftRight size={15} /> <span>Swap</span>
+          </button>
+          <label className="check-toggle">
+            <input type="checkbox" checked={ignoreWhitespace} onChange={(e) => setIgnoreWhitespace(e.target.checked)} />
+            <span>Ignore whitespace</span>
+          </label>
+          <label className="check-toggle">
+            <input type="checkbox" checked={ignoreCase} onChange={(e) => setIgnoreCase(e.target.checked)} />
+            <span>Ignore case</span>
+          </label>
+          <button className="btn btn-ghost btn-sm btn-danger-ghost" onClick={handleClear}>
+            <Trash2 size={15} /> <span>Clear</span>
+          </button>
+        </div>
 
-          <div className="flex items-center w-full-mobile">
-            <button className="btn btn-primary btn-lg mobile-full-btn" onClick={handleCompare}>
-              <GitCompare size={18} /> Compare Texts
-            </button>
+        <button className="btn btn-primary" onClick={() => handleCompare()} disabled={isComparing} title="Compare (Ctrl+Enter)">
+          {isComparing ? <RefreshCw size={16} className="animate-spin" /> : <GitCompare size={16} />}
+          <span>{isComparing ? 'Comparing…' : 'Compare'}</span>
+        </button>
+      </div>
+
+      {error && (
+        <div className="alert alert-error">
+          <AlertCircle size={16} /> <span>{error}</span>
+          <button className="alert-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
+        </div>
+      )}
+
+      {/* Inputs */}
+      <div className="editor-split compare-inputs">
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title"><span className="side-dot side-dot-left" /> Original</span>
+            <UploadButton label="Upload" className="btn btn-ghost btn-xs" onFileLoaded={(res) => { setOriginalText(res.content); setIsStale(true); }} onError={setError} />
+          </div>
+          <div className="code-panel-body">
+            <CodeDropzoneTextarea
+              value={originalText}
+              onChange={(val) => { setOriginalText(val); setIsStale(true); }}
+              placeholder="Paste or drag & drop the original text…"
+              lineNumbers
+            />
+          </div>
+          <div className="code-panel-footer">
+            <span>{originalText ? originalText.split('\n').length.toLocaleString() : 0} lines</span>
+            <span>{originalText.length.toLocaleString()} chars</span>
           </div>
         </div>
 
-
-        {/* Text Area Inputs */}
-        <div className="grid grid-cols-2 gap-4 text-inputs-grid">
-          <div className="form-group mb-0 flex flex-col">
-            <label className="form-label flex justify-between mb-2">
-              <span>Original Text (Before)</span>
-              <span className="text-muted" style={{ fontSize: '0.8rem' }}>{originalText.split('\n').length} lines</span>
-            </label>
-            <div className="code-editor-container flex-1">
-              <CodeDropzoneTextarea
-                value={originalText}
-                onChange={(val) => setOriginalText(val)}
-                placeholder="Paste or drag & drop original text file..."
-                className="code-textarea-input"
-                style={{ minHeight: '260px' }}
-              />
-            </div>
+        <div className="code-panel">
+          <div className="code-panel-header">
+            <span className="code-panel-title"><span className="side-dot side-dot-right" /> Modified</span>
+            <UploadButton label="Upload" className="btn btn-ghost btn-xs" onFileLoaded={(res) => { setModifiedText(res.content); setIsStale(true); }} onError={setError} />
           </div>
-
-          <div className="form-group mb-0 flex flex-col">
-            <label className="form-label flex justify-between mb-2">
-              <span>Modified Text (After)</span>
-              <span className="text-muted" style={{ fontSize: '0.8rem' }}>{modifiedText.split('\n').length} lines</span>
-            </label>
-            <div className="code-editor-container flex-1">
-              <CodeDropzoneTextarea
-                value={modifiedText}
-                onChange={(val) => setModifiedText(val)}
-                placeholder="Paste or drag & drop modified text file..."
-                className="code-textarea-input"
-                style={{ minHeight: '260px' }}
-              />
-            </div>
+          <div className="code-panel-body">
+            <CodeDropzoneTextarea
+              value={modifiedText}
+              onChange={(val) => { setModifiedText(val); setIsStale(true); }}
+              placeholder="Paste or drag & drop the modified text…"
+              lineNumbers
+            />
+          </div>
+          <div className="code-panel-footer">
+            <span>{modifiedText ? modifiedText.split('\n').length.toLocaleString() : 0} lines</span>
+            <span>{modifiedText.length.toLocaleString()} chars</span>
           </div>
         </div>
       </div>
 
-      {/* Comparison Result Section */}
-      {diffResult.rows.length > 0 && (
-        <div className="glass-card p-6" style={{ padding: '1.5rem' }} ref={resultRef}>
-          <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <h3 className="mb-0" style={{ fontSize: '1.25rem' }}>Comparison Result (Side-by-Side View)</h3>
-              <button 
-                className="btn btn-ghost btn-sm flex items-center gap-1"
-                onClick={() => setIsFullScreen(true)}
-                title="Full Screen Comparison View"
-                style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}
-              >
-                <Maximize2 size={15} />
-                <span>Full Screen</span>
-              </button>
-            </div>
-
-            {/* Change Pills */}
-            <div className="flex gap-2 items-center flex-wrap">
-              <span className="diff-pill diff-pill-add">
-                <PlusCircle size={14} /> {diffResult.additionsCount} Additions
-              </span>
-              <span className="diff-pill diff-pill-remove">
-                <MinusCircle size={14} /> {diffResult.deletionsCount} Deletions
-              </span>
-              <span className="diff-pill diff-pill-modify">
-                <AlertCircle size={14} /> {diffResult.modificationsCount} Modifications
-              </span>
-            </div>
-          </div>
-
-          {/* Side-by-side Split View Table */}
-          {renderDiffTable()}
-        </div>
-      )}
-
-      {/* Full Screen View Overlay for Comparison Result */}
-      {isFullScreen && createPortal(
-        <div className="fullscreen-overlay-page">
-          <div className="fullscreen-header">
-            {/* Title & Badges */}
-            <div className="fullscreen-title-area">
-              <GitCompare size={20} style={{ color: 'var(--accent)' }} />
-              <span style={{ fontSize: '1rem', fontWeight: 700 }}>Comparison Result</span>
-              <div className="flex gap-1 ml-2">
-                <span className="diff-pill diff-pill-add" style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}>
-                  +{diffResult.additionsCount}
-                </span>
-                <span className="diff-pill diff-pill-remove" style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}>
-                  -{diffResult.deletionsCount}
-                </span>
-                <span className="diff-pill diff-pill-modify" style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}>
-                  ~{diffResult.modificationsCount}
-                </span>
-              </div>
-            </div>
-
-            {/* Find Text Search Bar */}
-            <div className="fullscreen-search-bar">
-              <div className="search-input-wrapper">
-                <Search size={15} className="search-icon" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  className="search-input"
-                  placeholder="Find text in diff (Enter / Shift+Enter)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                />
-                {searchQuery && (
-                  <button className="search-clear-btn" onClick={() => setSearchQuery('')} title="Clear search">
-                    <X size={14} />
-                  </button>
-                )}
+      {/* Result */}
+      {rows.length > 0 && (
+        <div ref={resultRef} className="compare-result">
+          <div className={`code-panel diff-panel ${isMaximized ? 'is-maximized' : ''}`} onKeyDown={handlePanelKeyDown}>
+            <div className="code-panel-header diff-header">
+              <div className="diff-header-left">
+                <span className="code-panel-title">Result</span>
+                <span className="diff-pill diff-pill-add" title="Additions"><PlusCircle size={13} /> {diffResult.additionsCount}</span>
+                <span className="diff-pill diff-pill-remove" title="Deletions"><MinusCircle size={13} /> {diffResult.deletionsCount}</span>
+                <span className="diff-pill diff-pill-modify" title="Modifications"><AlertCircle size={13} /> {diffResult.modificationsCount}</span>
+                {isStale && <span className="stale-hint">Inputs changed — press Compare</span>}
               </div>
 
-              {/* Match Count Indicator */}
-              <div className="search-count-badge">
-                {totalMatches > 0 ? (
-                  <span>{currentMatchIndex + 1}/{totalMatches}</span>
-                ) : searchQuery ? (
-                  <span className="text-muted">0/0</span>
-                ) : (
-                  <span className="text-muted">Find</span>
-                )}
-              </div>
+              <FindBar
+                inputRef={searchInputRef}
+                onQueryChange={setSearchQuery}
+                total={totalMatches}
+                current={currentMatchIndex}
+                onNext={handleNextMatch}
+                onPrev={handlePrevMatch}
+                matchCase={matchCase}
+                onToggleMatchCase={() => setMatchCase(v => !v)}
+                placeholder="Find in diff (Ctrl+F)"
+              />
 
-              {/* Navigation Up & Down Arrows for Search */}
-              <div className="flex items-center gap-1">
-                <button 
-                  className="btn btn-ghost btn-xs search-nav-btn"
-                  onClick={handlePrevMatch}
-                  disabled={totalMatches === 0}
-                  title="Previous match (Shift+Enter)"
-                >
-                  <ChevronUp size={15} />
-                </button>
-                <button 
-                  className="btn btn-ghost btn-xs search-nav-btn"
-                  onClick={handleNextMatch}
-                  disabled={totalMatches === 0}
-                  title="Next match (Enter)"
-                >
-                  <ChevronDown size={15} />
-                </button>
-              </div>
-            </div>
-
-            {/* Action Buttons: Modification Nav & Close */}
-            <div className="fullscreen-actions">
-              {changeBlocks.length > 0 && (
-                <div className="flex items-center gap-1 mr-2 nav-change-group" style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
-                  <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600, marginRight: '0.2rem' }}>
-                    Change {currentChangeIndex + 1}/{changeBlocks.length}
+              <div className="code-panel-actions">
+                <div className="change-nav" title="Navigate changes (F7 / Shift+F7, Alt+↑/↓)">
+                  <span className="change-nav-label">
+                    {changeBlocks.length === 0 ? 'No changes' : `Change ${currentChangeIndex >= 0 ? currentChangeIndex + 1 : '–'} / ${changeBlocks.length}`}
                   </span>
-                  <button
-                    className="btn btn-ghost btn-xs search-nav-btn"
-                    onClick={handlePrevChange}
-                    disabled={currentChangeIndex === 0}
-                    title="Previous modification (Up)"
-                  >
+                  <button className="btn btn-ghost btn-xs" onClick={handlePrevChange} disabled={changeBlocks.length === 0} title="Previous change (Shift+F7)">
                     <ArrowUp size={14} />
                   </button>
-                  <button
-                    className="btn btn-ghost btn-xs search-nav-btn"
-                    onClick={handleNextChange}
-                    disabled={currentChangeIndex === changeBlocks.length - 1}
-                    title="Next modification (Down)"
-                  >
+                  <button className="btn btn-ghost btn-xs" onClick={handleNextChange} disabled={changeBlocks.length === 0} title="Next change (F7)">
                     <ArrowDown size={14} />
                   </button>
                 </div>
-              )}
 
-              <button className="btn btn-ghost btn-sm close-modal-btn" onClick={closeFullScreen} title="Close Fullscreen (Esc)">
-                <X size={20} />
-              </button>
+                <div className="segmented" role="group" aria-label="View mode">
+                  <button type="button" className={viewMode === 'split' ? 'active' : ''} onClick={() => setViewMode('split')} title="Side by side">
+                    <Columns2 size={14} /><span className="hide-mobile-text">Split</span>
+                  </button>
+                  <button type="button" className={viewMode === 'unified' ? 'active' : ''} onClick={() => setViewMode('unified')} title="Unified">
+                    <Rows2 size={14} /><span className="hide-mobile-text">Unified</span>
+                  </button>
+                </div>
+
+                <button
+                  className={`btn btn-ghost btn-xs ${hideUnchanged ? 'is-active' : ''}`}
+                  onClick={() => setHideUnchanged(v => !v)}
+                  title="Show only changes with context"
+                  aria-pressed={hideUnchanged}
+                  disabled={changeBlocks.length === 0}
+                >
+                  <EyeOff size={14} /><span className="hide-mobile-text">Changes only</span>
+                </button>
+
+                <button className="btn btn-ghost btn-xs" onClick={() => setIsMaximized(v => !v)} title={isMaximized ? 'Exit full screen (Esc)' : 'Full screen'}>
+                  {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="code-panel-body diff-body">
+              {identical ? (
+                <div className="diff-identical">
+                  <CheckCircle2 size={28} className="text-success" />
+                  <span>The texts are identical{ignoreWhitespace || ignoreCase ? ' (with the selected ignore options)' : ''}.</span>
+                </div>
+              ) : (
+                <>
+                  {viewMode === 'split' && (
+                    <div className="diff-columns-header">
+                      <span>Original</span>
+                      <span>Modified</span>
+                    </div>
+                  )}
+                  <div ref={scrollRef} className={`diff-scroll ${viewMode}`} tabIndex={0}>
+                    <DiffRows
+                      displayItems={displayItems}
+                      rows={rows}
+                      rangesByKey={rangesByKey}
+                      viewMode={viewMode}
+                      onShowAll={showAllLines}
+                    />
+                  </div>
+
+                  {/* Overview ruler: where the changes are in the whole file */}
+                  <div className="diff-overview" aria-hidden="true">
+                    {changeBlocks.map((b, i) => {
+                      const type = rows[b.start].type;
+                      return (
+                        <span
+                          key={b.start}
+                          className={`diff-overview-mark mark-${type} ${i === currentChangeIndex ? 'active' : ''}`}
+                          style={{ top: `${(b.start / rows.length) * 100}%`, height: `max(3px, ${((b.end - b.start + 1) / rows.length) * 100}%)` }}
+                          onClick={() => goToChange(i)}
+                        />
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="code-panel-footer">
+              <span>{rows.length.toLocaleString()} rows · {totalChanges.toLocaleString()} changed lines</span>
+              <span>{totalMatches > 0 ? `${totalMatches.toLocaleString()} matches` : ''}</span>
             </div>
           </div>
-
-          {/* Full Screen Diff Body */}
-          <div className="fullscreen-code-body p-6" ref={fullscreenCodeBodyRef}>
-            {renderDiffTable(modalDiffContainerRef)}
-          </div>
-        </div>,
-        document.body
+        </div>
       )}
-
-      <style>{`
-        .text-inputs-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-        }
-
-        .code-textarea-input {
-          font-family: var(--font-mono);
-          font-size: 0.9rem;
-          background: rgba(0, 0, 0, 0.3) !important;
-          color: #f8fafc !important;
-          border: none;
-          padding: 1rem;
-        }
-
-        .diff-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          padding: 0.25rem 0.75rem;
-          border-radius: var(--radius-full);
-          font-size: 0.85rem;
-          font-weight: 600;
-        }
-
-        .diff-pill-add {
-          background: rgba(16, 185, 129, 0.15);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.3);
-        }
-
-        .diff-pill-remove {
-          background: rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-
-        .diff-pill-modify {
-          background: rgba(245, 158, 11, 0.15);
-          color: #f59e0b;
-          border: 1px solid rgba(245, 158, 11, 0.3);
-        }
-
-        .diff-split-container {
-          border: 1px solid var(--border-light);
-          border-radius: var(--radius-lg);
-          overflow: hidden;
-          background: var(--bg-tertiary);
-          font-family: var(--font-mono);
-          font-size: 0.85rem;
-        }
-
-        .diff-split-header {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          background: rgba(0, 0, 0, 0.4);
-          border-bottom: 1px solid var(--border-light);
-          font-weight: 700;
-          color: var(--text-secondary);
-        }
-
-        .diff-split-col-header {
-          padding: 0.6rem 1rem;
-        }
-
-        .diff-split-col-header:first-child {
-          border-right: 1px solid var(--border-light);
-        }
-
-        .diff-split-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-          line-height: 1.5;
-          transition: background 0.2s ease, outline 0.2s ease;
-        }
-
-        .diff-row-focused {
-          outline: 2px solid var(--accent, #6366f1);
-          outline-offset: -2px;
-          box-shadow: inset 0 0 16px rgba(99, 102, 241, 0.4);
-          background: rgba(99, 102, 241, 0.18) !important;
-        }
-
-        .diff-pane {
-          display: flex;
-          padding: 0.25rem 0.5rem;
-          white-space: pre-wrap;
-          word-break: break-all;
-          overflow-x: auto;
-          color: #f8fafc;
-        }
-
-        .left-pane {
-          border-right: 1px solid var(--border-light);
-        }
-
-        .line-num {
-          user-select: none;
-          min-width: 35px;
-          color: var(--text-muted);
-          opacity: 0.6;
-          text-align: right;
-          padding-right: 0.75rem;
-          font-size: 0.8rem;
-        }
-
-        .line-content {
-          flex: 1;
-        }
-
-        .pane-added {
-          background: rgba(16, 185, 129, 0.12);
-          border-left: 3px solid #10b981;
-        }
-
-        .pane-removed {
-          background: rgba(239, 68, 68, 0.12);
-          border-left: 3px solid #ef4444;
-        }
-
-        .pane-modified {
-          background: rgba(245, 158, 11, 0.12);
-          border-left: 3px solid #f59e0b;
-        }
-
-        .inline-word-remove {
-          background: rgba(239, 68, 68, 0.35);
-          color: #fca5a5;
-          text-decoration: line-through;
-          padding: 0 2px;
-          border-radius: 2px;
-        }
-
-        .inline-word-add {
-          background: rgba(16, 185, 129, 0.35);
-          color: #6ee7b7;
-          font-weight: 700;
-          padding: 0 2px;
-          border-radius: 2px;
-        }
-
-        .fullscreen-overlay-page {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          width: 100%;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          background: #0a0a0f;
-          z-index: 999999;
-          display: flex;
-          flex-direction: column;
-          box-sizing: border-box;
-          overflow: hidden;
-        }
-
-        .fullscreen-header {
-          flex-shrink: 0;
-          background: #12131c;
-          border-bottom: 1px solid var(--border-light);
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-          padding: 0.6rem 1rem;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.75rem;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        .fullscreen-title-area {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-
-        .fullscreen-actions {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          flex-shrink: 0;
-        }
-
-        .fullscreen-code-body {
-          flex: 1;
-          overflow: auto;
-          background: #090a0e;
-        }
-
-        .fullscreen-search-bar {
-          background: rgba(0, 0, 0, 0.4);
-          border: 1px solid var(--border-medium);
-          padding: 0.2rem 0.5rem;
-          border-radius: var(--radius-lg);
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
-          flex: 1;
-          max-width: 400px;
-          box-sizing: border-box;
-        }
-
-        .search-input-wrapper {
-          position: relative;
-          flex: 1;
-          display: flex;
-          align-items: center;
-          min-width: 80px;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 0.4rem;
-          color: var(--text-muted);
-          pointer-events: none;
-        }
-
-        .search-input {
-          background: transparent;
-          border: none;
-          color: var(--text-primary);
-          padding: 0.3rem 1.6rem 0.3rem 1.8rem;
-          font-size: 0.85rem;
-          width: 100%;
-          outline: none;
-          font-family: inherit;
-        }
-
-        .search-clear-btn {
-          position: absolute;
-          right: 0.3rem;
-          background: transparent;
-          border: none;
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-        }
-
-        .search-clear-btn:hover {
-          color: var(--text-primary);
-        }
-
-        .search-count-badge {
-          font-size: 0.78rem;
-          font-weight: 600;
-          min-width: 45px;
-          text-align: center;
-          color: var(--text-secondary);
-          white-space: nowrap;
-        }
-
-        .search-nav-btn {
-          padding: 0.2rem;
-          border-radius: var(--radius-sm);
-        }
-
-        @media (max-width: 820px) {
-          .fullscreen-header {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            grid-template-areas:
-              "title actions"
-              "search search";
-            gap: 0.5rem;
-            padding: 0.5rem 0.75rem;
-          }
-
-          .fullscreen-title-area {
-            grid-area: title;
-          }
-
-          .fullscreen-actions {
-            grid-area: actions;
-          }
-
-          .fullscreen-search-bar {
-            grid-area: search;
-            max-width: 100%;
-            width: 100%;
-          }
-
-          .text-inputs-grid {
-            grid-template-columns: 1fr;
-          }
-          .diff-split-header, .diff-split-row {
-            grid-template-columns: 1fr;
-          }
-          .left-pane {
-            border-right: none;
-            border-bottom: 1px solid var(--border-light);
-          }
-
-          .block-mobile {
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: stretch !important;
-          }
-
-          .mobile-full-btn {
-            width: 100%;
-          }
-        }
-      `}</style>
     </div>
   );
 };

@@ -34,7 +34,7 @@ const BarcodeGenerator = () => {
   };
 
   return (
-    <div className="container animate-fade-in" style={{ paddingTop: '2rem' }}>
+    <div className="tool-page">
       <ToolHeader 
         title="Barcode Generator" 
         description="Generate sequential barcodes for inventory and tracking up to 100 at a time."
@@ -44,7 +44,7 @@ const BarcodeGenerator = () => {
 
       <div className="glass-card mb-8 p-6 print:hidden" style={{ padding: '1.5rem' }}>
         <h3 className="mb-4 text-xl">Sequence Configuration</h3>
-        <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto', gap: '1.5rem', alignItems: 'end' }}>
+        <div className="barcode-config">
           
           <div className="form-group">
             <label className="form-label">Prefix Optional</label>
@@ -77,8 +77,8 @@ const BarcodeGenerator = () => {
             />
           </div>
 
-          <div className="form-group mb-4">
-            <button className="btn btn-primary" onClick={handlePrint}>
+          <div className="form-group">
+            <button className="btn btn-primary" onClick={handlePrint} style={{ height: 42 }}>
               <Printer size={18} /> Print All
             </button>
           </div>
@@ -87,7 +87,7 @@ const BarcodeGenerator = () => {
 
       <div className="barcode-grid" style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))', 
         gap: '1.5rem' 
       }}>
         {barcodes.map((code, idx) => (
@@ -111,6 +111,21 @@ const BarcodeGenerator = () => {
       </div>
 
       <style>{`
+        .barcode-config {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+          gap: 1rem;
+          align-items: end;
+        }
+        .barcode-config .form-group { margin-bottom: 0; }
+        .barcode-grid svg { max-width: 100%; height: auto; }
+        @media (max-width: 768px) {
+          .barcode-config { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .barcode-config .btn { width: 100%; }
+        }
+        @media (max-width: 480px) {
+          .barcode-config { grid-template-columns: 1fr; }
+        }
         @media print {
           body * {
             visibility: hidden;

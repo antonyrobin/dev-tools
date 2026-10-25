@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Upload, AlertTriangle, FileText } from 'lucide-react';
 
 const BINARY_EXTENSIONS = [
@@ -139,10 +139,31 @@ const CodeDropzoneTextarea = ({
   readOnly = false,
   spellCheck = 'false',
   onFileLoaded = null,
-  onError = null
+  onError = null,
+  lineNumbers = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState(null);
+  const gutterRef = useRef(null);
+
+  // Gutter text is a single joined string: cheap even for tens of thousands of lines
+  const lineCount = useMemo(() => {
+    if (!lineNumbers || !value) return 1;
+    let count = 1;
+    for (let i = 0; i < value.length; i++) if (value.charCodeAt(i) === 10) count++;
+    return count;
+  }, [value, lineNumbers]);
+
+  const gutterText = useMemo(() => {
+    if (!lineNumbers) return '';
+    let out = '';
+    for (let i = 1; i <= lineCount; i++) out += `${i}\n`;
+    return out;
+  }, [lineCount, lineNumbers]);
+
+  const handleScroll = (e) => {
+    if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop;
+  };
 
   const handleProcessFile = async (file) => {
     try {
@@ -186,7 +207,7 @@ const CodeDropzoneTextarea = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}
+      style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}
     >
       {isDragging && (
         <div className="drag-overlay flex flex-col items-center justify-center">
@@ -205,15 +226,35 @@ const CodeDropzoneTextarea = ({
         </div>
       )}
 
-      <textarea
-        className={className}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-        readOnly={readOnly}
-        spellCheck={spellCheck}
-        style={{ flex: 1, width: '100%', height: '100%', resize: 'none', outline: 'none', ...style }}
-      />
+      {lineNumbers ? (
+        <div className="numbered-editor">
+          <div className="numbered-editor-gutter" ref={gutterRef} aria-hidden="true">
+            {gutterText}
+            <div style={{ height: '2rem' }} />
+          </div>
+          <textarea
+            className={className}
+            placeholder={placeholder}
+            value={value}
+            onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+            onScroll={handleScroll}
+            readOnly={readOnly}
+            spellCheck={spellCheck}
+            wrap="off"
+            style={{ flex: 1, width: '100%', height: '100%', resize: 'none', outline: 'none', ...style }}
+          />
+        </div>
+      ) : (
+        <textarea
+          className={className}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+          readOnly={readOnly}
+          spellCheck={spellCheck}
+          style={{ flex: 1, width: '100%', height: '100%', resize: 'none', outline: 'none', ...style }}
+        />
+      )}
 
       <style>{`
         .dropzone-textarea-wrapper {

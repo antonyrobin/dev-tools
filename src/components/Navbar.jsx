@@ -1,80 +1,131 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Code2, Menu, X, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Code2, Menu, X, Star, ChevronDown, Home as HomeIcon } from 'lucide-react';
+import { TOOLS, PRIMARY_TOOL_PATHS } from '../data/tools';
 import './Navbar.css';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
   const location = useLocation();
 
-  const toggleMenu = () => setIsOpen(!isOpen);
+  const primaryTools = TOOLS.filter(t => PRIMARY_TOOL_PATHS.includes(t.path));
+  const moreTools = TOOLS.filter(t => !PRIMARY_TOOL_PATHS.includes(t.path));
+  const moreActive = moreTools.some(t => t.path === location.pathname);
 
-  const navLinks = [
-    { name: 'Home', path: '/' },
-    { name: 'Convert', path: '/convert' },
-    { name: 'Format', path: '/format' },
-    { name: 'Compare', path: '/compare' },
-    { name: 'QR Code', path: '/qr-code' },
-    { name: 'Barcode', path: '/barcode' },
-  ];
+  // Close menus on navigation (state adjusted during render, no effect needed)
+  const [lastPath, setLastPath] = useState(location.pathname);
+  if (lastPath !== location.pathname) {
+    setLastPath(location.pathname);
+    setIsOpen(false);
+    setMoreOpen(false);
+  }
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handleClick = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
+    };
+    const handleKey = (e) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [moreOpen]);
+
+  // Prevent page scroll behind the open mobile menu
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
 
   return (
-    <nav className="navbar glass">
-      <div className="container navbar-container">
-        <Link to="/" className="navbar-logo">
-          <Code2 size={28} className="logo-icon" />
+    <nav className="navbar">
+      <div className="navbar-container">
+        <Link to="/" className="navbar-logo" aria-label="DevTools home">
+          <Code2 size={26} className="logo-icon" />
           <span className="logo-text">Dev<span className="text-gradient">Tools</span></span>
         </Link>
 
         {/* Desktop Menu */}
-        <div className="nav-links desktop-menu">
-          {navLinks.map((link) => (
-            <Link
-              key={link.path}
-              to={link.path}
-              className={`nav-link ${location.pathname === link.path ? 'active' : ''}`}
-            >
-              {link.name}
-            </Link>
+        <div className="desktop-menu">
+          {primaryTools.map((tool) => (
+            <NavLink key={tool.path} to={tool.path} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <tool.icon size={16} />
+              <span>{tool.name}</span>
+            </NavLink>
           ))}
-          <a href="https://github.com/antonyrobin/dev-tools" target="_blank" rel="noreferrer" className="btn btn-outline btn-github glass-card">
-            <Sparkles size={18} />
-            Star on GitHub
-          </a>
+
+          <div className="nav-more" ref={moreRef}>
+            <button
+              type="button"
+              className={`nav-link nav-more-trigger ${moreActive ? 'active' : ''}`}
+              onClick={() => setMoreOpen(o => !o)}
+              aria-expanded={moreOpen}
+              aria-haspopup="true"
+            >
+              <span>More tools</span>
+              <ChevronDown size={15} className={`nav-chevron ${moreOpen ? 'open' : ''}`} />
+            </button>
+            {moreOpen && (
+              <div className="nav-more-menu" role="menu">
+                {moreTools.map((tool) => (
+                  <NavLink key={tool.path} to={tool.path} className={({ isActive }) => `nav-more-item ${isActive ? 'active' : ''}`} role="menuitem">
+                    <span className="nav-more-icon" style={{ color: tool.color, background: `${tool.color}1f` }}>
+                      <tool.icon size={16} />
+                    </span>
+                    <span className="nav-more-text">
+                      <span className="nav-more-title">{tool.title}</span>
+                      <span className="nav-more-desc">{tool.description}</span>
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Mobile Menu Toggle */}
-        <button className="mobile-toggle btn-ghost" onClick={toggleMenu}>
-          {isOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="navbar-right">
+          <a href="https://github.com/antonyrobin/dev-tools" target="_blank" rel="noreferrer" className="btn btn-outline btn-sm btn-github">
+            <Star size={16} />
+            <span className="github-label">Star on GitHub</span>
+          </a>
+
+          <button
+            className="mobile-toggle"
+            onClick={() => setIsOpen(o => !o)}
+            aria-label={isOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu */}
       {isOpen && (
         <div className="mobile-menu">
-          {navLinks.map((link) => (
-            <Link
-              key={link.path}
-              to={link.path}
-              className={`mobile-link ${location.pathname === link.path ? 'active' : ''}`}
-              onClick={() => setIsOpen(false)}
-            >
-              <span>{link.name}</span>
-            </Link>
-          ))}
-          <a 
-            href="https://github.com/antonyrobin/dev-tools" 
-            target="_blank" 
-            rel="noreferrer" 
-            className="btn btn-outline btn-github mobile-github-btn"
-            onClick={() => setIsOpen(false)}
-          >
-            <Sparkles size={18} />
-            Star on GitHub
-          </a>
+          <Link to="/" className={`mobile-link ${location.pathname === '/' ? 'active' : ''}`}>
+            <span className="mobile-link-icon"><HomeIcon size={18} /></span>
+            <span>Home</span>
+          </Link>
+          <div className="mobile-grid">
+            {TOOLS.map((tool) => (
+              <Link
+                key={tool.path}
+                to={tool.path}
+                className={`mobile-link ${location.pathname === tool.path ? 'active' : ''}`}
+              >
+                <span className="mobile-link-icon" style={{ color: tool.color }}><tool.icon size={18} /></span>
+                <span>{tool.title}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
-
     </nav>
   );
 };
