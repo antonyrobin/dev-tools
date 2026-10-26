@@ -1,0 +1,108 @@
+.cc-preview {
+  height: 140px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Checkerboard shows through translucent colours */
+  background:
+    linear-gradient(var(--cc), var(--cc)),
+    repeating-conic-gradient(#cbd5e1 0% 25%, #f8fafc 0% 50%) 50% / 16px 16px;
+}
+
+.cc-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.cc-picker {
+  width: 46px;
+  min-width: 46px;
+  height: auto;
+  min-height: 40px;
+  padding: 2px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+.cc-contrast {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.cc-contrast-sample {
+  flex: 0 0 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  padding: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cc-sample-big {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.cc-contrast-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.cc-contrast-info strong {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+}
+
+.cc-scale {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+}
+
+.cc-swatch {
+  height: 72px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.3rem 0.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  transition: transform var(--transition-fast);
+}
+
+.cc-swatch span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  opacity: 0.85;
+}
+
+.cc-swatch:hover {
+  transform: scaleY(1.06);
+}
+
+@media (max-width: 600px) {
+  .cc-scale {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .cc-swatch {
+    height: 64px;
+  }
+}

@@ -16,7 +16,7 @@
   padding: 0.35rem 0.65rem;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgb(var(--fg-rgb) / 0.02);
   cursor: pointer;
   user-select: none;
 }
@@ -49,7 +49,7 @@
 
 .stale-hint {
   font-size: 0.75rem;
-  color: #fcd34d;
+  color: var(--warning-text);
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
   padding: 0.1rem 0.5rem;
@@ -67,9 +67,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.diff-pill-add { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.diff-pill-remove { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-.diff-pill-modify { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.diff-pill-add { background: rgba(16, 185, 129, 0.15); color: var(--success-text); border: 1px solid rgba(16, 185, 129, 0.3); }
+.diff-pill-remove { background: rgba(239, 68, 68, 0.15); color: var(--danger-text); border: 1px solid rgba(239, 68, 68, 0.3); }
+.diff-pill-modify { background: rgba(245, 158, 11, 0.15); color: var(--warning-text); border: 1px solid rgba(245, 158, 11, 0.3); }
 
 .change-nav {
   display: inline-flex;
@@ -78,7 +78,7 @@
   padding: 0.1rem 0.15rem 0.1rem 0.55rem;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--fg-rgb) / 0.03);
 }
 
 .change-nav-label {
@@ -104,7 +104,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgb(var(--inset-rgb) / 0.25);
   border-bottom: 1px solid var(--border-light);
   padding-right: 14px;
 }
@@ -184,7 +184,7 @@
   word-break: break-word;
   overflow-wrap: anywhere;
   padding-right: 0.75rem;
-  color: #e2e8f0;
+  color: var(--code-text);
 }
 
 /* Change colours */
@@ -208,22 +208,22 @@
 .pane-empty {
   background: repeating-linear-gradient(
     -45deg,
-    rgba(255, 255, 255, 0.015),
-    rgba(255, 255, 255, 0.015) 4px,
+    rgb(var(--fg-rgb) / 0.015),
+    rgb(var(--fg-rgb) / 0.015) 4px,
     transparent 4px,
     transparent 8px
   );
 }
 
-.diff-line-add .line-marker { color: #34d399; }
-.diff-line-remove .line-marker { color: #f87171; }
-.pane-added .line-marker { color: #34d399; }
-.pane-removed .line-marker { color: #f87171; }
-.pane-modified .line-marker { color: #fbbf24; }
+.diff-line-add .line-marker { color: var(--success-text); }
+.diff-line-remove .line-marker { color: var(--danger-text); }
+.pane-added .line-marker { color: var(--success-text); }
+.pane-removed .line-marker { color: var(--danger-text); }
+.pane-modified .line-marker { color: var(--warning-text); }
 
 .inline-word-remove {
   background: rgba(239, 68, 68, 0.38);
-  color: #fecaca;
+  color: var(--diff-remove-text);
   text-decoration: line-through;
   text-decoration-color: rgba(254, 202, 202, 0.6);
   border-radius: 2px;
@@ -231,7 +231,7 @@
 
 .inline-word-add {
   background: rgba(16, 185, 129, 0.38);
-  color: #d1fae5;
+  color: var(--diff-add-text);
   border-radius: 2px;
 }
 
@@ -251,7 +251,7 @@
   padding: 0.25rem 0 0.25rem 4.2rem;
   font-family: var(--font-sans);
   font-size: 0.78rem;
-  color: #a5b4fc;
+  color: var(--primary-text);
   background: rgba(99, 102, 241, 0.08);
   border: none;
   border-top: 1px dashed rgba(99, 102, 241, 0.3);

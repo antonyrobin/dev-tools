@@ -19,7 +19,7 @@
   padding: 1.1rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-light);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+  background: linear-gradient(135deg, rgb(var(--fg-rgb) / 0.04) 0%, rgb(var(--fg-rgb) / 0.01) 100%);
   min-width: 0;
 }
 
@@ -45,7 +45,7 @@
   font-size: 0.75rem;
   font-weight: 700;
   background: var(--primary-soft);
-  color: #c7d2fe;
+  color: var(--primary-text-strong);
   border: 1px solid rgba(99, 102, 241, 0.45);
   flex-shrink: 0;
 }
@@ -58,7 +58,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c7d2fe;
+  color: var(--primary-text-strong);
   background: var(--primary-soft);
   border: 1px solid rgba(99, 102, 241, 0.4);
   box-shadow: 0 0 20px rgba(99, 102, 241, 0.25);
@@ -75,9 +75,9 @@
   gap: 0.4rem;
   text-align: center;
   padding: 1.25rem;
-  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border: 2px dashed rgb(var(--fg-rgb) / 0.15);
   border-radius: var(--radius-lg);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgb(var(--inset-rgb) / 0.2);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -105,7 +105,7 @@
   align-items: center;
   justify-content: center;
   background: var(--primary-soft);
-  color: #a5b4fc;
+  color: var(--primary-text);
   margin-bottom: 0.25rem;
 }
 
@@ -182,7 +182,7 @@
   padding: 0.55rem 0.4rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgb(var(--inset-rgb) / 0.2);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 0.82rem;
@@ -211,7 +211,7 @@
 .format-chip.active {
   border-color: var(--chip-color);
   background: color-mix(in srgb, var(--chip-color) 18%, transparent);
-  color: #fff;
+  color: var(--text-primary);
   box-shadow: 0 0 0 1px var(--chip-color) inset;
 }
 
@@ -235,7 +235,7 @@
   padding: 0 0.6rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-medium);
-  background: rgba(0, 0, 0, 0.25);
+  background: rgb(var(--inset-rgb) / 0.25);
   cursor: text;
 }
 
@@ -260,7 +260,7 @@
   font-family: var(--font-mono);
   font-size: 0.78rem;
   font-weight: 600;
-  color: #a5b4fc;
+  color: var(--primary-text);
   white-space: nowrap;
 }
 

@@ -3,11 +3,11 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--border-color, rgb(var(--fg-rgb) / 0.12));
   background: var(--bg-card, rgba(24, 25, 38, 0.7));
   backdrop-filter: blur(12px);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 32px var(--shadow-color);
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -19,8 +19,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: rgba(15, 16, 26, 0.85);
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-color, rgb(var(--fg-rgb) / 0.08));
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -35,7 +35,7 @@
 .toolbar-divider {
   width: 1px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(var(--fg-rgb) / 0.12);
   margin: 0 4px;
 }
 
@@ -72,9 +72,9 @@
 }
 
 .toolbar-select {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--fg-rgb) / 0.05);
   color: var(--text-primary, #e2e8f0);
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border: 1px solid var(--border-color, rgb(var(--fg-rgb) / 0.15));
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 0.8rem;
@@ -84,8 +84,8 @@
 }
 
 .toolbar-select option {
-  background: #191a26;
-  color: #ffffff;
+  background: var(--bg-menu);
+  color: var(--text-primary);
 }
 
 .toolbar-select:hover:not(:disabled) {
@@ -105,7 +105,7 @@
 }
 
 .color-picker-label:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--fg-rgb) / 0.08);
 }
 
 .color-picker-label input[type="color"] {
@@ -227,7 +227,7 @@
 
 .rich-editor-canvas table td,
 .rich-editor-canvas table th {
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgb(var(--fg-rgb) / 0.15);
   padding: 8px 12px;
 }
 
@@ -236,7 +236,7 @@
   width: 100%;
   max-width: 100%;
   min-height: 400px;
-  background: #0d0e15;
+  background: var(--bg-menu);
   color: #a6adc8;
   font-family: monospace;
   font-size: 0.9rem;
@@ -250,8 +250,8 @@
 }
 
 .rich-editor-footer {
-  background: rgba(15, 16, 26, 0.9);
-  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-color, rgb(var(--fg-rgb) / 0.08));
 }
 
 /* Modals */
@@ -261,7 +261,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgb(var(--inset-rgb) / 0.7);
   backdrop-filter: blur(4px);
   z-index: 1000;
 }
@@ -269,19 +269,19 @@
 .modal-card {
   width: 90%;
   max-width: 440px;
-  background: #191a26;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-menu);
+  border: 1px solid rgb(var(--fg-rgb) / 0.15);
   border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 40px var(--shadow-color);
 }
 
 .input-field {
   width: 100%;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgb(var(--fg-rgb) / 0.06);
+  border: 1px solid rgb(var(--fg-rgb) / 0.15);
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--text-primary);
   outline: none;
 }
 

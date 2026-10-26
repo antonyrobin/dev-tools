@@ -122,11 +122,11 @@ const CodeCompiler = () => {
           white-space: pre-wrap;
           word-break: break-word;
           padding: 0.15rem 0.9rem;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          border-bottom: 1px solid rgb(var(--fg-rgb) / 0.04);
         }
-        .console-warn { color: #fcd34d; background: rgba(245, 158, 11, 0.08); }
-        .console-error { color: #fca5a5; background: rgba(239, 68, 68, 0.08); }
-        .console-info { color: #93c5fd; }
+        .console-warn { color: var(--warning-text); background: rgba(245, 158, 11, 0.08); }
+        .console-error { color: var(--danger-text); background: rgba(239, 68, 68, 0.08); }
+        .console-info { color: var(--info-text); }
       `}</style>
     </div>
   );

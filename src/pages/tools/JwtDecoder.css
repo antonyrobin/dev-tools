@@ -1,0 +1,26 @@
+.jwt-input {
+  flex: 1;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.jwt-colored {
+  word-break: break-all;
+  font-size: 0.8rem;
+}
+
+.jwt-seg-0 { color: #fb7185; }
+.jwt-seg-1 { color: #c084fc; }
+.jwt-seg-2 { color: #22d3ee; }
+.jwt-dot { color: var(--text-muted); }
+
+:root[data-theme='light'] .jwt-seg-0 { color: #be123c; }
+:root[data-theme='light'] .jwt-seg-1 { color: #7e22ce; }
+:root[data-theme='light'] .jwt-seg-2 { color: #0e7490; }
+
+.jwt-part .output-block {
+  max-height: 320px;
+}
+
+.jwt-header { border-top: 2px solid #fb7185; }
+.jwt-payload { border-top: 2px solid #c084fc; }

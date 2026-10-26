@@ -14,6 +14,20 @@ const QrGenerator = lazy(() => import('./pages/QrGenerator'));
 const BarcodeGenerator = lazy(() => import('./pages/BarcodeGenerator'));
 const TextCompare = lazy(() => import('./pages/TextCompare'));
 const ConvertPage = lazy(() => import('./pages/ConvertPage'));
+const FolderCompare = lazy(() => import('./pages/tools/FolderCompare'));
+const DataConverter = lazy(() => import('./pages/tools/DataConverter'));
+const JsonToTs = lazy(() => import('./pages/tools/JsonToTs'));
+const JsonViewer = lazy(() => import('./pages/tools/JsonViewer'));
+const Encoder = lazy(() => import('./pages/tools/Encoder'));
+const JwtDecoder = lazy(() => import('./pages/tools/JwtDecoder'));
+const UuidGenerator = lazy(() => import('./pages/tools/UuidGenerator'));
+const HashGenerator = lazy(() => import('./pages/tools/HashGenerator'));
+const PasswordGenerator = lazy(() => import('./pages/tools/PasswordGenerator'));
+const LoremIpsum = lazy(() => import('./pages/tools/LoremIpsum'));
+const RegexTester = lazy(() => import('./pages/tools/RegexTester'));
+const CronExplainer = lazy(() => import('./pages/tools/CronExplainer'));
+const TimestampConverter = lazy(() => import('./pages/tools/TimestampConverter'));
+const ColorConverter = lazy(() => import('./pages/tools/ColorConverter'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Terms = lazy(() => import('./pages/Terms'));
 
@@ -49,6 +63,20 @@ function App() {
             <Route path="/optimize" element={<CodeOptimizer />} />
             <Route path="/qr-code" element={<QrGenerator />} />
             <Route path="/barcode" element={<BarcodeGenerator />} />
+            <Route path="/folder-compare" element={<FolderCompare />} />
+            <Route path="/data-convert" element={<DataConverter />} />
+            <Route path="/json-to-ts" element={<JsonToTs />} />
+            <Route path="/json-viewer" element={<JsonViewer />} />
+            <Route path="/encode" element={<Encoder />} />
+            <Route path="/jwt" element={<JwtDecoder />} />
+            <Route path="/uuid" element={<UuidGenerator />} />
+            <Route path="/hash" element={<HashGenerator />} />
+            <Route path="/password" element={<PasswordGenerator />} />
+            <Route path="/lorem" element={<LoremIpsum />} />
+            <Route path="/regex" element={<RegexTester />} />
+            <Route path="/cron" element={<CronExplainer />} />
+            <Route path="/timestamp" element={<TimestampConverter />} />
+            <Route path="/color" element={<ColorConverter />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<Home />} />

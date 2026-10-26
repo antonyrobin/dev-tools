@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import ToolHeader from '../components/ToolHeader';
+import ShareHistory from '../components/ShareHistory';
 import FindBar from '../components/FindBar';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import {
@@ -201,9 +203,14 @@ const DiffRows = React.memo(({ displayItems, rows, rangesByKey, viewMode, onShow
 
 const TextCompare = () => {
   usePageTitle('Text Comparison');
-  const [originalText, setOriginalText] = useState(sampleOriginal);
-  const [modifiedText, setModifiedText] = useState(sampleModified);
-  const [diffResult, setDiffResult] = useState(() => computeDiff(sampleOriginal, sampleModified));
+  // Other tools (e.g. Folder Compare) can open a pair of texts here via router state
+  const { state: routeState } = useLocation();
+  const initialPair = routeState?.original !== undefined
+    ? { original: routeState.original, modified: routeState.modified ?? '' }
+    : { original: sampleOriginal, modified: sampleModified };
+  const [originalText, setOriginalText] = useState(initialPair.original);
+  const [modifiedText, setModifiedText] = useState(initialPair.modified);
+  const [diffResult, setDiffResult] = useState(() => computeDiff(initialPair.original, initialPair.modified));
   const [isComparing, setIsComparing] = useState(false);
   const [error, setError] = useState(null);
   const [isStale, setIsStale] = useState(false);
@@ -465,7 +472,19 @@ const TextCompare = () => {
         description="Compare two texts with side-by-side or unified diffs, inline word changes, change navigation and fast find."
         icon={GitCompare}
         color="var(--accent)"
-      />
+      >
+        <ShareHistory
+          toolId="compare"
+          state={{ original: originalText, modified: modifiedText }}
+          describe={(st) => `${st.original.trim().replace(/\s+/g, ' ').slice(0, 36)} ↔ ${st.modified.trim().replace(/\s+/g, ' ').slice(0, 36)}`}
+          isEmpty={(st) => (!st.original.trim() && !st.modified.trim()) || (st.original === sampleOriginal && st.modified === sampleModified)}
+          onRestore={(st) => {
+            setOriginalText(st.original || '');
+            setModifiedText(st.modified || '');
+            handleCompare(st.original || '', st.modified || '');
+          }}
+        />
+      </ToolHeader>
 
       {/* Controls */}
       <div className="tool-toolbar">

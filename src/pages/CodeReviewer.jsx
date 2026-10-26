@@ -91,7 +91,7 @@ const CodeReviewer = () => {
                     issue.type === 'warning' ? 'bg-warning-light text-warning border-warning' :
                     issue.type === 'success' ? 'bg-success-light text-success border-success' :
                     'bg-info-light text-info border-info'
-                  }`} style={{ border: '1px solid', background: 'rgba(255,255,255,0.02)' }}>
+                  }`} style={{ border: '1px solid', background: 'rgb(var(--fg-rgb) / 0.02)' }}>
                     {issue.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                     <span className="text-sm">{issue.msg}</span>
                   </div>

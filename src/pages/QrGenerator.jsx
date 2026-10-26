@@ -258,7 +258,7 @@ const QrGenerator = () => {
           aspect-ratio: 1;
           padding: 1rem;
           border-radius: var(--radius-lg);
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+          box-shadow: 0 10px 30px var(--shadow-color);
           display: flex;
           align-items: center;
           justify-content: center;

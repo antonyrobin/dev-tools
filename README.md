@@ -15,7 +15,9 @@ This project is built using a modern, snappy frontend stack:
 - **Routing**: `react-router-dom` for seamless client-side navigation.
 - **Styling**: Context-aware custom CSS combined with `lucide-react` for scalable, beautiful UI icons.
 - **Core Integrations**: 
-  - `prettier` formatters
+  - `prettier` formatters and `sql-formatter`
+  - `js-yaml`, `fast-xml-parser`, `papaparse` and `jsonpath-plus` for the data tools
+  - `jszip` for ZIP comparison, `spark-md5` for MD5, `cronstrue` for cron descriptions
   - `qrcode.react` for rendering QR paths
   - `react-barcode` for dynamic structural barcodes
 - **Security**: [@marsidev/react-turnstile](https://www.npmjs.com/package/@marsidev/react-turnstile) wrapper for Cloudflare integration.
@@ -107,6 +109,35 @@ A straightforward, highly versatile tool for generating QR codes dynamically. Us
 
 ### 7. 🏷️ Barcode Generator
 A feature-rich encoding tool capable of creating dynamic and sequential standard barcodes (e.g., Code128 format) on the fly—highly beneficial for warehouse inventory tracing, ticketing, and POS prints.
+
+### 8. 🔀 Text, Folder & ZIP Compare
+Side-by-side or unified text diffs with inline word changes, plus a folder compare that accepts two folders, sets of files or ZIP archives (dragged in or picked), shows what was added, removed or modified as a tree, and opens any changed file as a diff.
+
+### 9. 🔁 Data Tools
+- **Data Converter**: JSON ↔ YAML ↔ XML ↔ CSV in any direction, live as you type (nested objects become dotted CSV columns and back).
+- **JSON to TypeScript**: interfaces or type aliases inferred from a sample, with optional fields from merged arrays.
+- **JSON Tree Viewer**: collapsible tree, click-to-copy node paths and JSONPath queries.
+
+### 10. 🔐 Encoders & Decoders
+Base64 (including URL-safe and file → Base64), URL percent-encoding with a URL breakdown, HTML entities, and a JWT decoder that shows claims and expiry and verifies HMAC, RSA and ECDSA signatures locally.
+
+### 11. 🎲 Generators
+UUID v4/v7 (with an inspector), MD5/SHA-1/SHA-256/SHA-384/SHA-512 hashes and HMACs for text or files, cryptographically random passwords with a strength estimate, and Lorem Ipsum.
+
+### 12. 🧰 Utilities
+A regex tester with live match highlighting, capture groups and replace preview (patterns run in a worker, so catastrophic backtracking is stopped instead of freezing the page), a cron explainer with upcoming run times, a timestamp converter with time zones, and a colour converter with WCAG contrast checks.
+
+### 13. 🗄️ SQL Formatting
+The Code Formatter uses [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter) with 13 dialects (PostgreSQL, MySQL, T-SQL, PL/SQL, BigQuery, Snowflake and more) and a keyword-case option.
+
+---
+
+## ✨ Sharing, History, Themes & Offline
+
+- **Shareable links**: the *Share* button on a tool copies a link that carries the input itself (compressed into the URL fragment, which is never sent to a server).
+- **History**: recent inputs are saved automatically in your browser's local storage and can be restored or removed from the *History* menu. Passwords, generated values and HMAC keys are never saved.
+- **Light / dark theme**: follows your system setting by default; the navbar toggle cycles system → light → dark.
+- **Offline**: production builds register a service worker (generated in `vite.config.js` from `src/sw-template.js`) that precaches the whole app, so every tool keeps working without a connection.
 
 ---
 

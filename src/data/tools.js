@@ -1,4 +1,18 @@
-import { FileText, FileJson, GitCompare, Zap, Cpu, Code, Search, QrCode, AlignJustify } from 'lucide-react';
+import {
+  FileText, FileJson, GitCompare, Zap, Cpu, Code, Search, QrCode, AlignJustify,
+  ArrowLeftRight, Braces, ListTree, Binary, KeyRound, Fingerprint, Hash, Lock, Pilcrow,
+  Regex, CalendarClock, Clock, Palette, FolderGit2,
+} from 'lucide-react';
+
+// Tool groups, in display order (navbar menu, home filter chips, footer)
+export const CATEGORIES = [
+  { id: 'code', label: 'Code' },
+  { id: 'data', label: 'Data & JSON' },
+  { id: 'encode', label: 'Encode & Decode' },
+  { id: 'generate', label: 'Generators' },
+  { id: 'utility', label: 'Utilities' },
+  { id: 'docs', label: 'Documents' },
+];
 
 // Single source of truth for tool navigation (navbar, home grid, footer)
 export const TOOLS = [
@@ -6,7 +20,7 @@ export const TOOLS = [
     path: '/format',
     name: 'Format',
     title: 'Code Formatter',
-    description: 'Beautify JSON, JavaScript, HTML, CSS, SQL, YAML and more with syntax highlighting, folding and fast find.',
+    description: 'Beautify JSON, JavaScript, HTML, CSS, SQL (10+ dialects), YAML and more with syntax highlighting, folding and fast find.',
     icon: FileJson,
     color: '#6366f1',
     category: 'code',
@@ -21,6 +35,15 @@ export const TOOLS = [
     category: 'code',
   },
   {
+    path: '/folder-compare',
+    name: 'Folder Compare',
+    title: 'Folder & ZIP Compare',
+    description: 'Compare two folders, sets of files or ZIP archives and inspect what was added, removed or changed.',
+    icon: FolderGit2,
+    color: '#a855f7',
+    category: 'code',
+  },
+  {
     path: '/convert',
     name: 'Convert',
     title: 'Document Converter',
@@ -28,6 +51,141 @@ export const TOOLS = [
     icon: FileText,
     color: '#3b82f6',
     category: 'docs',
+  },
+  {
+    path: '/data-convert',
+    name: 'Data Convert',
+    title: 'Data Converter',
+    description: 'Convert between JSON, YAML, XML and CSV in any direction, live as you type.',
+    icon: ArrowLeftRight,
+    color: '#0ea5e9',
+    category: 'data',
+  },
+  {
+    path: '/json-to-ts',
+    name: 'JSON → TS',
+    title: 'JSON to TypeScript',
+    description: 'Generate TypeScript interfaces or types from JSON samples, with optional fields and nested types.',
+    icon: Braces,
+    color: '#2563eb',
+    category: 'data',
+  },
+  {
+    path: '/json-viewer',
+    name: 'JSON Viewer',
+    title: 'JSON Tree Viewer',
+    description: 'Explore JSON as a collapsible tree, copy any node path and run JSONPath queries.',
+    icon: ListTree,
+    color: '#14b8a6',
+    category: 'data',
+  },
+  {
+    path: '/encode',
+    name: 'Encode',
+    title: 'Encoder / Decoder',
+    description: 'Base64, URL and HTML entity encoding and decoding, Unicode-safe.',
+    icon: Binary,
+    color: '#f97316',
+    category: 'encode',
+  },
+  {
+    path: '/jwt',
+    name: 'JWT',
+    title: 'JWT Decoder',
+    description: 'Decode JSON Web Tokens, read claims and expiry, and verify HMAC or RSA signatures locally.',
+    icon: KeyRound,
+    color: '#e11d48',
+    category: 'encode',
+  },
+  {
+    path: '/uuid',
+    name: 'UUID',
+    title: 'UUID Generator',
+    description: 'Generate v4 and time-ordered v7 UUIDs in bulk, and inspect existing ones.',
+    icon: Fingerprint,
+    color: '#22c55e',
+    category: 'generate',
+  },
+  {
+    path: '/hash',
+    name: 'Hash',
+    title: 'Hash Generator',
+    description: 'MD5, SHA-1, SHA-256, SHA-384 and SHA-512 for text or files, plus HMAC and hash matching.',
+    icon: Hash,
+    color: '#84cc16',
+    category: 'generate',
+  },
+  {
+    path: '/password',
+    name: 'Password',
+    title: 'Password Generator',
+    description: 'Strong random passwords from the browser’s cryptographic generator, with strength estimate.',
+    icon: Lock,
+    color: '#eab308',
+    category: 'generate',
+  },
+  {
+    path: '/lorem',
+    name: 'Lorem Ipsum',
+    title: 'Lorem Ipsum Generator',
+    description: 'Placeholder paragraphs, sentences or words as plain text or HTML.',
+    icon: Pilcrow,
+    color: '#a3a3a3',
+    category: 'generate',
+  },
+  {
+    path: '/qr-code',
+    name: 'QR Code',
+    title: 'QR Generator',
+    description: 'Create customised QR codes and download them as PNG.',
+    icon: QrCode,
+    color: '#3b82f6',
+    category: 'generate',
+  },
+  {
+    path: '/barcode',
+    name: 'Barcode',
+    title: 'Barcode Generator',
+    description: 'Generate and print sequential CODE128 barcodes for inventory.',
+    icon: AlignJustify,
+    color: '#a855f7',
+    category: 'generate',
+  },
+  {
+    path: '/regex',
+    name: 'Regex',
+    title: 'Regex Tester',
+    description: 'Test regular expressions with live match highlighting, capture groups and replace preview.',
+    icon: Regex,
+    color: '#d946ef',
+    category: 'utility',
+  },
+  {
+    path: '/cron',
+    name: 'Cron',
+    title: 'Cron Explainer',
+    description: 'Translate cron expressions into plain English and preview the next run times.',
+    icon: CalendarClock,
+    color: '#f43f5e',
+    category: 'utility',
+  },
+  {
+    path: '/timestamp',
+    name: 'Timestamp',
+    title: 'Timestamp Converter',
+    description: 'Convert Unix epochs and dates across formats and time zones.',
+    icon: Clock,
+    color: '#06b6d4',
+    category: 'utility',
+  },
+  {
+    path: '/color',
+    name: 'Color',
+    title: 'Color Converter',
+    description: 'Convert HEX, RGB, HSL, HWB, CMYK and OKLCH, with contrast checks and shades.',
+    icon: Palette,
+    color: '#ec4899',
+    category: 'utility',
   },
   {
     path: '/minify',
@@ -65,25 +223,12 @@ export const TOOLS = [
     color: '#06b6d4',
     category: 'code',
   },
-  {
-    path: '/qr-code',
-    name: 'QR Code',
-    title: 'QR Generator',
-    description: 'Create customised QR codes and download them as PNG.',
-    icon: QrCode,
-    color: '#3b82f6',
-    category: 'generate',
-  },
-  {
-    path: '/barcode',
-    name: 'Barcode',
-    title: 'Barcode Generator',
-    description: 'Generate and print sequential CODE128 barcodes for inventory.',
-    icon: AlignJustify,
-    color: '#a855f7',
-    category: 'generate',
-  },
 ];
 
 // Tools shown directly in the desktop navbar; the rest live under "More"
-export const PRIMARY_TOOL_PATHS = ['/format', '/compare', '/convert', '/minify'];
+export const PRIMARY_TOOL_PATHS = ['/format', '/compare', '/data-convert', '/convert'];
+
+export const toolsByCategory = (tools = TOOLS) =>
+  CATEGORIES
+    .map((c) => ({ ...c, tools: tools.filter((t) => t.category === c.id) }))
+    .filter((c) => c.tools.length > 0);

@@ -1,0 +1,212 @@
+.fc-sources {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fc-source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 2px dashed var(--border-medium);
+  border-radius: var(--radius-lg);
+  background: var(--bg-code);
+  min-width: 0;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.fc-source.loaded {
+  border-style: solid;
+  border-color: var(--border-light);
+}
+
+.fc-source.dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.fc-source-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 28px;
+}
+
+.fc-source-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 92px;
+  text-align: center;
+}
+
+.fc-source-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.fc-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.fc-progress-track {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: rgb(var(--fg-rgb) / 0.08);
+  overflow: hidden;
+}
+
+.fc-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.fc-results {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);
+  gap: 1rem;
+}
+
+.fc-search {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.fc-search .form-input {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.fc-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.3rem 0;
+}
+
+.fc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.28rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fc-row:hover {
+  background: rgb(var(--fg-rgb) / 0.05);
+}
+
+.fc-row.selected {
+  background: var(--primary-soft);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.fc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.fc-dir .fc-icon {
+  color: #a78bfa;
+}
+
+.fc-status-same .fc-name {
+  color: var(--text-muted);
+}
+
+.fc-dir-count {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  color: var(--warning-text);
+  white-space: nowrap;
+}
+
+.fc-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.tool-toolbar .fc-pill {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.7rem;
+}
+
+.fc-added { color: var(--success-text); background: rgba(16, 185, 129, 0.13); border-color: rgba(16, 185, 129, 0.3); }
+.fc-removed { color: var(--danger-text); background: rgba(239, 68, 68, 0.13); border-color: rgba(239, 68, 68, 0.3); }
+.fc-modified { color: var(--warning-text); background: rgba(245, 158, 11, 0.13); border-color: rgba(245, 158, 11, 0.3); }
+.fc-same { color: var(--text-muted); background: rgb(var(--fg-rgb) / 0.04); border-color: var(--border-light); }
+
+.fc-diff-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.fc-diff .diff-scroll {
+  padding-right: 0;
+}
+
+@media (max-width: 1024px) {
+  .fc-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fc-tree-panel .code-panel-body {
+    height: clamp(260px, 45vh, 520px);
+  }
+}
+
+@media (max-width: 700px) {
+  .fc-sources {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fc-swap {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+}
