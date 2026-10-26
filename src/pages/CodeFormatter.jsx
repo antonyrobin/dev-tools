@@ -10,6 +10,7 @@ import prettierPluginHtml from 'prettier/plugins/html';
 import prettierPluginPostcss from 'prettier/plugins/postcss';
 import prettierPluginMarkdown from 'prettier/plugins/markdown';
 import prettierPluginYaml from 'prettier/plugins/yaml';
+import ShareHistory from '../components/ShareHistory';
 import usePageTitle from '../hooks/usePageTitle';
 import useMaximize from '../hooks/useMaximize';
 import { buildSearchRegex, scanLine, highlightHtmlRanges, MAX_MATCHES } from '../utils/textSearch';
@@ -59,7 +60,7 @@ const defaultSampleCode = {
   java: 'public class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello Java");\n  }\n}',
   csharp: 'namespace HelloApp {\n  class Program {\n    static void Main(string[] args) {\n      Console.WriteLine("Hello C#");\n    }\n  }\n}',
   python: 'def process_data(items):\n  result = [x * 2 for x in items if x > 0]\n  return result\n',
-  sql: 'SELECT id, name, email, created_at FROM users WHERE status=\'active\' ORDER BY created_at DESC;',
+  sql: 'select u.id, u.name, count(o.id) as order_count from users u left join orders o on o.user_id = u.id where u.status = \'active\' and o.created_at > current_date - interval \'30 days\' group by u.id, u.name having count(o.id) > 2 order by order_count desc limit 10;',
   php: '<?php\n$user = ["name" => "John", "role" => "Admin"];\necho json_encode($user);\n?>',
   c: '#include <stdio.h>\nint main() {\n  printf("Hello, C World!\\n");\n  return 0;\n}',
   cpp: '#include <iostream>\nint main() {\n  std::cout << "Hello C++" << std::endl;\n  return 0;\n}',
@@ -287,14 +288,27 @@ const basicIndenter = (code, unit) => {
   return out.join('\n');
 };
 
-const sqlFormatter = (code, unit) => {
-  return code
-    .replace(/\s+/g, ' ')
-    .replace(/\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|LEFT JOIN|RIGHT JOIN|INNER JOIN|OUTER JOIN|LIMIT|HAVING|INSERT INTO|UPDATE|DELETE FROM|SET|VALUES|UNION ALL|UNION)\b/gi, '\n$1')
-    .replace(/ \b(AND|OR)\b/gi, `\n${unit}$1`)
-    .replace(/^\s*\n/gm, '')
-    .trim();
-};
+const SQL_DIALECTS = [
+  { value: 'sql', label: 'Standard SQL' },
+  { value: 'postgresql', label: 'PostgreSQL' },
+  { value: 'mysql', label: 'MySQL' },
+  { value: 'mariadb', label: 'MariaDB' },
+  { value: 'transactsql', label: 'SQL Server (T-SQL)' },
+  { value: 'plsql', label: 'Oracle PL/SQL' },
+  { value: 'sqlite', label: 'SQLite' },
+  { value: 'bigquery', label: 'BigQuery' },
+  { value: 'snowflake', label: 'Snowflake' },
+  { value: 'redshift', label: 'Redshift' },
+  { value: 'spark', label: 'Spark SQL' },
+  { value: 'trino', label: 'Trino / Presto' },
+  { value: 'db2', label: 'IBM Db2' },
+];
+
+const SQL_KEYWORD_CASES = [
+  { value: 'upper', label: 'KEYWORDS' },
+  { value: 'lower', label: 'keywords' },
+  { value: 'preserve', label: 'Keep case' },
+];
 
 const pythonFormatter = (code) => {
   return code
@@ -307,6 +321,8 @@ const CodeFormatter = () => {
   usePageTitle('Code Formatter');
   const [language, setLanguage] = useState('json');
   const [indent, setIndent] = useState('2');
+  const [sqlDialect, setSqlDialect] = useState('sql');
+  const [sqlKeywordCase, setSqlKeywordCase] = useState('upper');
   const [inputCode, setInputCode] = useState(defaultSampleCode.json);
   const [formattedCode, setFormattedCode] = useState(defaultSampleCode.json);
   const [copied, setCopied] = useState(false);
@@ -487,7 +503,20 @@ const CodeFormatter = () => {
       } else if (['java', 'c', 'cpp', 'csharp', 'php'].includes(language)) {
         result = basicIndenter(inputCode, unit);
       } else if (language === 'sql') {
-        result = sqlFormatter(inputCode, unit);
+        try {
+          // Loaded on demand: the dialect grammars are only needed for SQL
+          const { format: formatSql } = await import('sql-formatter');
+          result = formatSql(inputCode, {
+            language: sqlDialect,
+            tabWidth: indent === 'tab' ? 2 : Number(indent),
+            useTabs: indent === 'tab',
+            keywordCase: sqlKeywordCase,
+            linesBetweenQueries: 1,
+          });
+        } catch (sqlErr) {
+          // sql-formatter reports the line and column it could not parse
+          throw new Error(sqlErr.message?.split('\n').slice(0, 2).join(' ') || 'could not parse the query');
+        }
       } else if (language === 'python') {
         result = pythonFormatter(inputCode);
       } else {
@@ -561,10 +590,26 @@ const CodeFormatter = () => {
     <div className="tool-page">
       <ToolHeader
         title="Code Formatter"
-        description="Beautify and highlight code in 13 languages. Fold blocks, find text instantly, and expand the output to full screen."
+        description="Beautify and highlight code in 13 languages, with dialect-aware SQL formatting. Fold blocks, find text instantly, and expand the output to full screen."
         icon={FileJson}
         color="var(--primary)"
-      />
+      >
+        <ShareHistory
+          toolId="format"
+          state={{ language, indent, input: inputCode, ...(language === 'sql' ? { sqlDialect } : {}) }}
+          describe={(st) => `${st.language.toUpperCase()} · ${st.input.trim().replace(/\s+/g, ' ').slice(0, 60)}`}
+          isEmpty={(st) => !st.input.trim() || Object.values(defaultSampleCode).includes(st.input)}
+          onRestore={(st) => {
+            if (LANGUAGES.some(l => l.value === st.language)) setLanguage(st.language);
+            if (st.indent) setIndent(st.indent);
+            if (st.sqlDialect) setSqlDialect(st.sqlDialect);
+            setInputCode(st.input || '');
+            setFormattedCode('');
+            setError(null);
+            setCollapsedFolds({});
+          }}
+        />
+      </ToolHeader>
 
       {/* Controls Toolbar */}
       <div className="tool-toolbar">
@@ -577,6 +622,16 @@ const CodeFormatter = () => {
           <select className="form-select" value={indent} onChange={(e) => setIndent(e.target.value)} aria-label="Indentation" style={{ minWidth: 120 }}>
             {INDENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          {language === 'sql' && (
+            <>
+              <select className="form-select" value={sqlDialect} onChange={(e) => setSqlDialect(e.target.value)} aria-label="SQL dialect">
+                {SQL_DIALECTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+              <select className="form-select" value={sqlKeywordCase} onChange={(e) => setSqlKeywordCase(e.target.value)} aria-label="Keyword case" style={{ minWidth: 120 }}>
+                {SQL_KEYWORD_CASES.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+              </select>
+            </>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={() => loadSample(language)} title="Load sample code">
             <RotateCcw size={15} /> <span>Sample</span>
           </button>

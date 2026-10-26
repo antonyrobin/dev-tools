@@ -3,12 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0a0e" />
+    <!-- Apply the saved theme before first paint to avoid a flash of the wrong colours -->
+    <script>
+      (function () {
+        var theme = 'dark';
+        try {
+          var pref = localStorage.getItem('devtools:theme') || 'system';
+          theme = pref === 'system'
+            ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+            : pref;
+        } catch (e) { /* storage blocked */ }
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
     
     <!-- SEO Meta Tags -->
     <title>DevTools - Free Open Source Code Utilities</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Free, open source dev tools suite featuring a Code Formatter, Code Minifier, Code Compiler, Code Optimizer, QR Code Generator, and Barcode Generator." />
-    <meta name="keywords" content="free, open source, dev tools, code formatter, code minifier, code compiler, Code optimizer, QR Code generator, Barcode Generator" />
+    <meta name="description" content="Free, open source dev tools: code and SQL formatter, text and folder compare, JSON/YAML/XML/CSV converter, JSON to TypeScript, Base64/URL/JWT decoders, UUID, hash and password generators, regex tester, cron explainer and more. Works offline." />
+    <meta name="keywords" content="free, open source, dev tools, code formatter, sql formatter, json to yaml, json to typescript, base64, jwt decoder, uuid generator, hash generator, password generator, regex tester, cron, timestamp converter, color converter, folder compare" />
     <meta name="author" content="DevTools Open Source" />
     
     <!-- Open Graph Tags -->

@@ -3,18 +3,13 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, Search, Lock, Gauge } from 'lucide-react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import usePageTitle from '../hooks/usePageTitle';
-import { TOOLS } from '../data/tools';
+import { TOOLS, CATEGORIES as TOOL_CATEGORIES } from '../data/tools';
 import './Home.css';
 
-const CATEGORIES = [
-  { id: 'all', label: 'All tools' },
-  { id: 'code', label: 'Code' },
-  { id: 'docs', label: 'Documents' },
-  { id: 'generate', label: 'Generators' },
-];
+const CATEGORIES = [{ id: 'all', label: 'All tools' }, ...TOOL_CATEGORIES];
 
 const HIGHLIGHTS = [
-  { icon: Lock, title: '100% client-side', text: 'Files and code are processed in your browser and never uploaded.' },
+  { icon: Lock, title: '100% client-side', text: 'Files and code are processed in your browser and never uploaded. Works offline too.' },
   { icon: Gauge, title: 'Built for big files', text: 'Fast find, folding and diffing that stay smooth on thousands of lines.' },
   { icon: ShieldCheck, title: 'Free & open source', text: 'No sign-up, no tracking walls. Inspect and contribute on GitHub.' },
 ];
@@ -48,14 +43,14 @@ const Home = () => {
           </h1>
 
           <p className="hero-subtitle animate-fade-in">
-            Format, compare, convert, minify and generate — all in one fast, private, browser-based workspace.
+            Format, compare, convert, encode, decode and generate — all in one fast, private, browser-based workspace that also works offline.
           </p>
 
           <div className="hero-search animate-fade-in">
             <Search size={18} className="hero-search-icon" />
             <input
               type="search"
-              placeholder="Search tools… e.g. json, diff, pdf, qr"
+              placeholder="Search tools… e.g. json, yaml, jwt, regex, uuid"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Search tools"

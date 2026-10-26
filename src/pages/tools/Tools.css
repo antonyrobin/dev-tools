@@ -1,0 +1,286 @@
+/* Shared building blocks for the smaller utility tools */
+
+.util-card {
+  background: var(--bg-code);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  min-width: 0;
+}
+
+.util-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.util-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.util-grid.sidebar {
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+}
+
+.util-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* Compact label + control */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.field > span,
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field .form-input,
+.field .form-select {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.field-row > .field {
+  flex: 1 1 140px;
+}
+
+.mono-input {
+  font-family: var(--font-mono) !important;
+  font-size: 0.9rem;
+}
+
+/* Checkbox / toggle chip used for options */
+.check-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: rgb(var(--fg-rgb) / 0.02);
+}
+
+.check-toggle input {
+  accent-color: var(--primary);
+}
+
+.check-toggle:has(input:checked) {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: var(--primary-soft);
+  color: var(--primary-text-strong);
+}
+
+/* Tabs built on .segmented that scroll sideways on small screens */
+.tab-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Key / value result table */
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.kv-table th,
+.kv-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.kv-table tr:last-child th,
+.kv-table tr:last-child td {
+  border-bottom: none;
+}
+
+.kv-table th {
+  width: 34%;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.kv-table td {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.kv-table td.kv-copy {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Plain read-only monospace output block */
+.output-block {
+  font-family: var(--font-mono);
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--code-text);
+  background: rgb(var(--inset-rgb) / 0.2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  overflow: auto;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.status-badge.ok { color: var(--success-text); background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.35); }
+.status-badge.bad { color: var(--danger-text); background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); }
+.status-badge.warn { color: var(--warning-text); background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); }
+.status-badge.info { color: var(--info-text); background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.35); }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  border: 1px solid var(--border-light);
+  background: rgb(var(--fg-rgb) / 0.03);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.chip.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-text-strong);
+}
+
+.range-input {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.empty-hint {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.inline-error {
+  color: var(--danger-text);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+/* Editor panels inside utility tools are shorter than the main editors */
+.code-panel.compact .code-panel-body {
+  height: clamp(220px, 42vh, 560px);
+}
+
+@media (max-width: 1024px) {
+  .util-grid,
+  .util-grid.sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .util-card {
+    padding: 0.8rem;
+  }
+
+  .kv-table th {
+    width: auto;
+    white-space: normal;
+  }
+
+  /* Stack key / value on phones so long values get the full width */
+  .kv-table.stack-mobile tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-bottom: 1px solid var(--border-light);
+    padding: 0.35rem 0;
+  }
+
+  .kv-table.stack-mobile tr:last-child {
+    border-bottom: none;
+  }
+
+  .kv-table.stack-mobile th,
+  .kv-table.stack-mobile td {
+    border-bottom: none;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .kv-table.stack-mobile th {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+  }
+}
