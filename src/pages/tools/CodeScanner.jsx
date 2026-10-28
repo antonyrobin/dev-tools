@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ScanLine, ImageUp, Camera, CameraOff, Trash2, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import { scanImage, scanFrame, describeContent, preloadScanner } from '../../utils/codeScanner';
 import './Tools.css';
 import './CodeScanner.css';
@@ -45,7 +44,6 @@ const ResultCard = ({ result }) => {
 };
 
 const CodeScanner = () => {
-  usePageTitle('QR & Barcode Scanner');
   const [mode, setMode] = useState('image');
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Zap, Copy, Check, Download, Trash2, AlertTriangle } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 import { minifyCode } from '../utils/minify';
 
 const LANGUAGES = [
@@ -18,7 +17,6 @@ const byteSize = (s) => new Blob([s]).size;
 const formatBytes = (b) => (b < 1024 ? `${b} B` : `${(b / 1024).toFixed(1)} KB`);
 
 const CodeMinifier = () => {
-  usePageTitle('Code Minifier');
   const [language, setLanguage] = useState('javascript');
   const [inputCode, setInputCode] = useState('');
   const [outputCode, setOutputCode] = useState('');

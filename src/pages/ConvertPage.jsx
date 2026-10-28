@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import ToolHeader from '../components/ToolHeader';
 import RichTextEditor from '../components/RichTextEditor';
-import usePageTitle from '../hooks/usePageTitle';
 import {
   parseFileToHtml,
   convertAndDownload,
@@ -59,7 +58,6 @@ const formatBytes = (bytes) => {
 };
 
 const ConvertPage = () => {
-  usePageTitle('Document & File Converter');
 
   const [activeFile, setActiveFile] = useState(null);
   const [htmlContent, setHtmlContent] = useState('<h1>Welcome to File Converter!</h1><p>Upload a file on the left or start editing right here. You can format text, add tables, images, links, change colors, and convert your work to Word, PDF, Excel, Text, Markdown, HTML, JSON, or Image format.</p>');

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Cpu, Play, Trash2 } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 
 const formatArg = (a) => {
   if (typeof a === 'string') return a;
@@ -15,7 +14,6 @@ const formatArg = (a) => {
 };
 
 const CodeCompiler = () => {
-  usePageTitle('Code Compiler');
   const [code, setCode] = useState('// Write your JS code here\nconsole.log("Hello, World!");\nconsole.table?.([{ a: 1 }]);\nconsole.warn("Warnings are highlighted");\n');
   const [logs, setLogs] = useState([]);
   const [duration, setDuration] = useState(null);

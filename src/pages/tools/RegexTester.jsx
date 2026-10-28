@@ -3,7 +3,6 @@ import { Regex, AlertTriangle, BookOpen, Replace } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 import './RegexTester.css';
 
@@ -80,7 +79,6 @@ function useRegexWorker() {
 }
 
 const RegexTester = () => {
-  usePageTitle('Regex Tester');
   const [pattern, setPattern] = useState(SAMPLE_PATTERN);
   const [flags, setFlags] = useState('g');
   const [text, setText] = useState(SAMPLE_TEXT);

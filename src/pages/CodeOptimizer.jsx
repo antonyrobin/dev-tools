@@ -2,10 +2,8 @@ import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Code, Box } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 
 const CodeOptimizer = () => {
-  usePageTitle('Code Optimizer');
   const [code, setCode] = useState('');
   const [optimized, setOptimized] = useState('');
 

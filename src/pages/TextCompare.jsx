@@ -208,7 +208,7 @@ const TextCompare = () => {
   const { state: routeState } = useLocation();
   const [handoffId] = useState(readHandoffId);
   const [pairTitle, setPairTitle] = useState(routeState?.title || null);
-  usePageTitle(pairTitle ? `${pairTitle} · Compare` : 'Text Comparison');
+  usePageTitle(pairTitle && `${pairTitle} · Compare`);
   const initialPair = routeState?.original !== undefined
     ? { original: routeState.original, modified: routeState.modified ?? '' }
     : handoffId

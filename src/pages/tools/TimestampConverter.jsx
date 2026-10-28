@@ -3,7 +3,6 @@ import { Clock, Pause, Play, AlertTriangle } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 import './TimestampConverter.css';
 
@@ -76,7 +75,6 @@ const toLocalInputValue = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 
 const TimestampConverter = () => {
-  usePageTitle('Timestamp Converter');
   const [now, setNow] = useState(() => Date.now());
   const [paused, setPaused] = useState(false);
   const [input, setInput] = useState(() => String(Math.floor(Date.now() / 1000)));

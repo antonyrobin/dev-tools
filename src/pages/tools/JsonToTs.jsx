@@ -5,7 +5,6 @@ import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
 import CodeDropzoneTextarea, { UploadButton } from '../../components/CodeDropzoneTextarea';
-import usePageTitle from '../../hooks/usePageTitle';
 import { jsonToTypeScript } from '../../utils/jsonToTs';
 import './Tools.css';
 
@@ -23,7 +22,6 @@ const SAMPLE = `{
 }`;
 
 const JsonToTs = () => {
-  usePageTitle('JSON to TypeScript');
   const [input, setInput] = useState(SAMPLE);
   const [rootName, setRootName] = useState('Root');
   const [useType, setUseType] = useState(false);

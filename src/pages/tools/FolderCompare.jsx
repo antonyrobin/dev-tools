@@ -6,7 +6,6 @@ import {
   Maximize2, Minimize2,
 } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
-import usePageTitle from '../../hooks/usePageTitle';
 import useMaximize from '../../hooks/useMaximize';
 import { canHandoff, openWithPayload } from '../../utils/tabHandoff';
 import { loadFileList, loadZip, loadDataTransfer, compareSources, buildTree, isBinary } from '../../utils/folderCompare';
@@ -230,7 +229,6 @@ const FileDiff = ({ item }) => {
 };
 
 const FolderCompare = () => {
-  usePageTitle('Folder & ZIP Compare');
   const [left, setLeft] = useState({});
   const [right, setRight] = useState({});
   const [results, setResults] = useState(null);

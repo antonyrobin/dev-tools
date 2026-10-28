@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import Seo from './components/Seo';
 import Home from './pages/Home';
 
 import { ROUTE_LOADERS } from './data/routeLoaders';
@@ -28,6 +29,7 @@ const PageLoader = () => (
 function App() {
   return (
     <Router>
+      <Seo />
       <ScrollToTop />
       <Navbar />
       <main className="page-container">

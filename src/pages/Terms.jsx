@@ -1,10 +1,8 @@
 import React from 'react';
 import ToolHeader from '../components/ToolHeader';
 import { FileText } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 
 const Terms = () => {
-  usePageTitle('Terms of Service');
   return (
     <div className="container animate-fade-in" style={{ paddingTop: '2rem', maxWidth: '800px' }}>
       <ToolHeader 

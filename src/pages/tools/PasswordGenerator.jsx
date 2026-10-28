@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Lock, RefreshCw, ShieldAlert, ShieldCheck, Shield } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import { randomInt, pick, shuffle } from '../../utils/random';
 import './Tools.css';
 import './PasswordGenerator.css';
@@ -38,7 +37,6 @@ function crackTime(bits) {
 }
 
 const PasswordGenerator = () => {
-  usePageTitle('Password Generator');
   const [length, setLength] = useState(20);
   const [enabled, setEnabled] = useState({ upper: true, lower: true, digits: true, symbols: true });
   const [avoidAmbiguous, setAvoidAmbiguous] = useState(true);
