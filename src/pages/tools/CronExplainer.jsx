@@ -4,7 +4,6 @@ import { CalendarClock, AlertTriangle, Info } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import { parseCron, nextRuns, FIELDS, MACROS } from '../../utils/cron';
 import './Tools.css';
 import './CronExplainer.css';
@@ -31,7 +30,6 @@ const FIELD_HELP = {
 };
 
 const CronExplainer = () => {
-  usePageTitle('Cron Explainer');
   const [expr, setExpr] = useState('*/15 9-17 * * MON-FRI');
   const [use24h, setUse24h] = useState(true);
   const [utc, setUtc] = useState(false);

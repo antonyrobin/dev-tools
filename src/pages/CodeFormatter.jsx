@@ -11,7 +11,6 @@ import prettierPluginPostcss from 'prettier/plugins/postcss';
 import prettierPluginMarkdown from 'prettier/plugins/markdown';
 import prettierPluginYaml from 'prettier/plugins/yaml';
 import ShareHistory from '../components/ShareHistory';
-import usePageTitle from '../hooks/usePageTitle';
 import useMaximize from '../hooks/useMaximize';
 import { buildSearchRegex, scanLine, highlightHtmlRanges, MAX_MATCHES } from '../utils/textSearch';
 
@@ -446,7 +445,6 @@ function useHighlightedLines(code, language) {
 }
 
 const CodeFormatter = () => {
-  usePageTitle('Code Formatter');
   const [language, setLanguage] = useState('json');
   const [indent, setIndent] = useState('2');
   const [sqlDialect, setSqlDialect] = useState('sql');

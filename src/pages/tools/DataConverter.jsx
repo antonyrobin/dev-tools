@@ -4,7 +4,6 @@ import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
 import CodeDropzoneTextarea, { UploadButton } from '../../components/CodeDropzoneTextarea';
-import usePageTitle from '../../hooks/usePageTitle';
 import { DATA_FORMATS, detectFormat, parseData, serializeData } from '../../utils/dataFormats';
 import './Tools.css';
 
@@ -57,7 +56,6 @@ const DELIMITERS = [
 const extFor = (fmt) => DATA_FORMATS.find((f) => f.value === fmt)?.ext || 'txt';
 
 const DataConverter = () => {
-  usePageTitle('Data Converter');
   const [from, setFrom] = useState('json');
   const [to, setTo] = useState('yaml');
   const [input, setInput] = useState(SAMPLES.json);

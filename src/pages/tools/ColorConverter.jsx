@@ -3,7 +3,6 @@ import { Palette, Shuffle, AlertTriangle } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import { parseColor, formatsOf, contrastRatio, toHex, mix } from '../../utils/color';
 import { randomInt } from '../../utils/random';
 import './Tools.css';
@@ -56,7 +55,6 @@ const Swatch = ({ color }) => {
 };
 
 const ColorConverter = () => {
-  usePageTitle('Color Converter');
   const [input, setInput] = useState('#6366f1');
 
   const color = useMemo(() => parseColor(input), [input]);

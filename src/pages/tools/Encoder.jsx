@@ -4,7 +4,6 @@ import { Binary, ArrowDownUp, Trash2, AlertTriangle, FileUp } from 'lucide-react
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 
 // ---- Codecs ----
@@ -103,7 +102,6 @@ const UrlBreakdown = ({ text }) => {
 };
 
 const Encoder = () => {
-  usePageTitle('Encoder / Decoder');
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = CODECS[searchParams.get('tab')] ? searchParams.get('tab') : 'base64';
   const [mode, setMode] = useState('encode');

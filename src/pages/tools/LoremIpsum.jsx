@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Pilcrow, RefreshCw } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import { randomInt } from '../../utils/random';
 import './Tools.css';
 
@@ -54,7 +53,6 @@ const UNITS = [
 ];
 
 const LoremIpsum = () => {
-  usePageTitle('Lorem Ipsum Generator');
   const [unit, setUnit] = useState('paragraphs');
   const [count, setCount] = useState(3);
   const [startWithLorem, setStartWithLorem] = useState(true);

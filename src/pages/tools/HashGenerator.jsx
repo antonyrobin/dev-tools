@@ -4,7 +4,6 @@ import { Hash, FileUp, X, CheckCircle2 } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 
 const ALGORITHMS = [
@@ -58,7 +57,6 @@ async function computeHashes(bytes, hmacKey) {
 const formatBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
 const HashGenerator = () => {
-  usePageTitle('Hash Generator');
   const [text, setText] = useState('The quick brown fox jumps over the lazy dog');
   const [file, setFile] = useState(null); // { name, size, bytes }
   const [useHmac, setUseHmac] = useState(false);

@@ -2,10 +2,8 @@ import React, { useState } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Search, AlertCircle, CheckCircle } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 
 const CodeReviewer = () => {
-  usePageTitle('Code Reviewer');
   const [code, setCode] = useState('');
   const [issues, setIssues] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);

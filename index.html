@@ -19,23 +19,23 @@
       })();
     </script>
     
-    <!-- SEO Meta Tags -->
-    <title>DevTools - Free Open Source Code Utilities</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Free, open source dev tools: code and SQL formatter, text and folder compare, JSON/YAML/XML/CSV converter, JSON to TypeScript, Base64/URL/JWT decoders, UUID, hash and password generators, regex tester, cron explainer and more. Works offline." />
-    <meta name="keywords" content="free, open source, dev tools, code formatter, sql formatter, json to yaml, json to typescript, base64, jwt decoder, uuid generator, hash generator, password generator, regex tester, cron, timestamp converter, color converter, folder compare" />
     <meta name="author" content="DevTools Open Source" />
-    
-    <!-- Open Graph Tags -->
-    <meta property="og:title" content="DevTools - Free Open Source Toolkit" />
-    <meta property="og:description" content="Free, open source dev tools including code formatter, code minifier, code compiler, Code optimizer, QR Code generator, Barcode Generator." />
-    <meta property="og:type" content="website" />
-    
+
+    <!-- Per-page title, description, keywords, canonical, social tags and structured data: see vite-plugin-seo.js -->
+    <!--app-seo-->
+    <style>
+      .seo-fallback { max-width: 960px; margin: 0 auto; padding: 5rem 1rem 2rem; font: 14px/1.5 system-ui, sans-serif; color: #8b8fa3; }
+      .seo-fallback h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
+      .seo-fallback ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+      .seo-fallback a { color: inherit; }
+    </style>
+
     <!-- Cloudflare Turnstile Script for Bot Protection -->
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--app-fallback--></div>
     <script type="module" src="/src/main.jsx"></script>
     
     <!-- Cloudflare Turnstile Integration (Invisible Validation) -->

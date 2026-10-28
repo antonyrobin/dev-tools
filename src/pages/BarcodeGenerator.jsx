@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import ToolHeader from '../components/ToolHeader';
 import { AlignJustify, Printer } from 'lucide-react';
 import Barcode from 'react-barcode';
-import usePageTitle from '../hooks/usePageTitle';
 
 const BarcodeGenerator = () => {
-  usePageTitle('Barcode Generator');
   const [startSequence, setStartSequence] = useState(1000);
   const [count, setCount] = useState(12);
   const [prefix, setPrefix] = useState('ITM-');

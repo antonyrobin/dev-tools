@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, Search, Lock, Gauge } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 import { TOOLS, CATEGORIES as TOOL_CATEGORIES } from '../data/tools';
 import { prefetchRoute } from '../data/routeLoaders';
 import './Home.css';
@@ -44,7 +43,6 @@ const LazyTurnstile = () => {
 };
 
 const Home = () => {
-  usePageTitle('Home');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
 

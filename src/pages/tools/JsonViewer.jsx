@@ -6,7 +6,6 @@ import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
 import CodeDropzoneTextarea, { UploadButton } from '../../components/CodeDropzoneTextarea';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 import './JsonViewer.css';
 
@@ -147,7 +146,6 @@ const walkTo = (path, root) => {
 };
 
 const JsonViewer = () => {
-  usePageTitle('JSON Tree Viewer');
   const [input, setInput] = useState(SAMPLE);
   const [query, setQuery] = useState('$.store.book[?(@.price < 10)].title');
   const [selected, setSelected] = useState('$');

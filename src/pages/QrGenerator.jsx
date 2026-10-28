@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import ToolHeader from '../components/ToolHeader';
 import { QrCode, Download, Copy, Check } from 'lucide-react';
-import usePageTitle from '../hooks/usePageTitle';
 
 const PRESETS = [
   { id: 'text', label: 'Text / URL' },
@@ -21,7 +20,6 @@ const LEVELS = [
 const escapeWifi = (s) => s.replace(/([\\;,:"])/g, '\\$1');
 
 const QrGenerator = () => {
-  usePageTitle('QR Generator');
   const [preset, setPreset] = useState('text');
   const [text, setText] = useState('https://devtools.redexoans.com');
   const [wifi, setWifi] = useState({ ssid: '', password: '', security: 'WPA', hidden: false });

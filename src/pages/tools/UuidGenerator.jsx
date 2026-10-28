@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Fingerprint, RefreshCw, Download, Search } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 
 const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -65,7 +64,6 @@ function inspectUuid(text) {
 }
 
 const UuidGenerator = () => {
-  usePageTitle('UUID Generator');
   const [version, setVersion] = useState('v4');
   const [count, setCount] = useState(10);
   const [upper, setUpper] = useState(false);

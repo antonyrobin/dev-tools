@@ -3,7 +3,6 @@ import { KeyRound, AlertTriangle, ShieldCheck, ShieldX, Trash2, Sparkles } from 
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
 import CopyButton from '../../components/CopyButton';
-import usePageTitle from '../../hooks/usePageTitle';
 import './Tools.css';
 import './JwtDecoder.css';
 
@@ -96,7 +95,6 @@ const JsonBlock = ({ title, value, tone }) => {
 };
 
 const JwtDecoder = () => {
-  usePageTitle('JWT Decoder');
   const [token, setToken] = useState(SAMPLE_TOKEN);
   const [keyText, setKeyText] = useState('');
   const [secretIsBase64, setSecretIsBase64] = useState(false);
