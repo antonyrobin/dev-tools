@@ -757,6 +757,8 @@ mark.search-match-active {
   line-height: var(--code-line-height);
   padding: 0.5rem 0;
   position: relative;
+  /* The formatter virtualizes its rows and keeps the view steady itself */
+  overflow-anchor: none;
 }
 
 .code-view-lines {
@@ -768,13 +770,6 @@ mark.search-match-active {
   display: flex;
   align-items: flex-start;
   min-height: var(--code-line-height);
-  /* Browser skips layout/paint for off-screen lines: keeps 10k+ line files smooth */
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--code-line-height);
-}
-
-.code-view-scroll.wrap .code-line-row {
-  content-visibility: visible;
 }
 
 .code-line-row:hover {

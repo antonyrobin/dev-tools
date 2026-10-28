@@ -322,3 +322,10 @@
     padding-left: 2.5rem;
   }
 }
+
+.compare-pair-title {
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

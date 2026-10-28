@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
+import { prefetchRoute } from '../data/routeLoaders';
 import { Code2, Menu, X, Star, ChevronDown, Home as HomeIcon, Sun, Moon, Monitor, WifiOff } from 'lucide-react';
 import { TOOLS, PRIMARY_TOOL_PATHS, toolsByCategory } from '../data/tools';
 import useTheme from '../hooks/useTheme';
@@ -81,7 +82,7 @@ const Navbar = () => {
         {/* Desktop Menu */}
         <div className="desktop-menu">
           {primaryTools.map((tool) => (
-            <NavLink key={tool.path} to={tool.path} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <NavLink key={tool.path} to={tool.path} onMouseEnter={() => prefetchRoute(tool.path)} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <tool.icon size={16} />
               <span>{tool.name}</span>
             </NavLink>
@@ -107,6 +108,7 @@ const Navbar = () => {
                       <NavLink
                         key={tool.path}
                         to={tool.path}
+                        onMouseEnter={() => prefetchRoute(tool.path)}
                         className={({ isActive }) => `nav-more-item ${isActive ? 'active' : ''}`}
                         role="menuitem"
                         title={tool.description}
