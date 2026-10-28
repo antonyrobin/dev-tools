@@ -12,6 +12,7 @@ import usePageTitle from '../hooks/usePageTitle';
 import useMaximize from '../hooks/useMaximize';
 import { computeDiff } from '../utils/diff';
 import { buildSearchRegex, scanLine, MAX_MATCHES } from '../utils/textSearch';
+import { readHandoffId, receivePayload } from '../utils/tabHandoff';
 import './TextCompare.css';
 
 const sampleOriginal = `{
@@ -202,16 +203,21 @@ const DiffRows = React.memo(({ displayItems, rows, rangesByKey, viewMode, onShow
 });
 
 const TextCompare = () => {
-  usePageTitle('Text Comparison');
-  // Other tools (e.g. Folder Compare) can open a pair of texts here via router state
+  // Other tools (e.g. Folder Compare) open a pair of texts here, either via router state
+  // or in a new tab with a handoff id whose payload arrives from the opening tab
   const { state: routeState } = useLocation();
+  const [handoffId] = useState(readHandoffId);
+  const [pairTitle, setPairTitle] = useState(routeState?.title || null);
+  usePageTitle(pairTitle ? `${pairTitle} · Compare` : 'Text Comparison');
   const initialPair = routeState?.original !== undefined
     ? { original: routeState.original, modified: routeState.modified ?? '' }
-    : { original: sampleOriginal, modified: sampleModified };
+    : handoffId
+      ? { original: '', modified: '' }
+      : { original: sampleOriginal, modified: sampleModified };
   const [originalText, setOriginalText] = useState(initialPair.original);
   const [modifiedText, setModifiedText] = useState(initialPair.modified);
   const [diffResult, setDiffResult] = useState(() => computeDiff(initialPair.original, initialPair.modified));
-  const [isComparing, setIsComparing] = useState(false);
+  const [isComparing, setIsComparing] = useState(Boolean(handoffId));
   const [error, setError] = useState(null);
   const [isStale, setIsStale] = useState(false);
 
@@ -413,6 +419,25 @@ const TextCompare = () => {
     handleCompare();
   }, [optionsKey, handleCompare]);
 
+  // Load a pair handed over from another tab
+  useEffect(() => {
+    if (!handoffId) return;
+    let cancelled = false;
+    receivePayload(handoffId).then((payload) => {
+      if (cancelled) return;
+      if (!payload) {
+        setIsComparing(false);
+        setError('The files to compare are no longer available. Open them again from Folder Compare.');
+        return;
+      }
+      setOriginalText(payload.original ?? '');
+      setModifiedText(payload.modified ?? '');
+      if (payload.title) setPairTitle(payload.title);
+      compareRef.current(payload.original ?? '', payload.modified ?? '');
+    });
+    return () => { cancelled = true; };
+  }, [handoffId]);
+
   const handleSwap = () => {
     setOriginalText(modifiedText);
     setModifiedText(originalText);
@@ -513,6 +538,10 @@ const TextCompare = () => {
           <span>{isComparing ? 'Comparing…' : 'Compare'}</span>
         </button>
       </div>
+
+      {pairTitle && (
+        <div className="compare-pair-title text-sm text-muted">Comparing <code title={pairTitle}>{pairTitle}</code></div>
+      )}
 
       {error && (
         <div className="alert alert-error">

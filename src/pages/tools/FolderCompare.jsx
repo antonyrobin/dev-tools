@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   FolderGit2, FolderOpen, Files, FileArchive, X, GitCompare, ChevronRight, ChevronDown, Folder, File,
   ChevronsUpDown, ChevronsDownUp, Download, AlertTriangle, RefreshCw, ArrowLeftRight, ExternalLink, CheckCircle2,
+  Maximize2, Minimize2,
 } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import usePageTitle from '../../hooks/usePageTitle';
+import useMaximize from '../../hooks/useMaximize';
+import { canHandoff, openWithPayload } from '../../utils/tabHandoff';
 import { loadFileList, loadZip, loadDataTransfer, compareSources, buildTree, isBinary } from '../../utils/folderCompare';
 import { computeDiff } from '../../utils/diff';
 import './Tools.css';
@@ -156,13 +159,14 @@ const FileDiff = ({ item }) => {
         setState({ binary: true, leftSize: lb?.length, rightSize: rb?.length });
         return;
       }
-      if ((lb?.length || 0) + (rb?.length || 0) > MAX_DIFF_BYTES) {
-        setState({ tooLarge: true });
-        return;
-      }
       const dec = new TextDecoder();
       const original = lb ? dec.decode(lb) : '';
       const modified = rb ? dec.decode(rb) : '';
+      if ((lb?.length || 0) + (rb?.length || 0) > MAX_DIFF_BYTES) {
+        // Text Compare diffs in a worker, so it can still take these
+        setState({ tooLarge: true, original, modified });
+        return;
+      }
       setState({ original, modified, diff: computeDiff(original, modified) });
     })().catch((err) => !cancelled && setState({ error: err.message }));
     return () => { cancelled = true; };
@@ -172,11 +176,15 @@ const FileDiff = ({ item }) => {
     <div className="code-panel fc-diff">
       <div className="code-panel-header">
         <span className="code-panel-title fc-diff-title" title={item.path}><StatusPill status={item.status} /> {item.path}</span>
-        {state.diff && (
+        {state.original !== undefined && (
           <button
             className="btn btn-ghost btn-xs"
-            onClick={() => navigate('/compare', { state: { original: state.original, modified: state.modified } })}
-            title="Open this pair in Text Compare"
+            onClick={() => {
+              const pair = { original: state.original, modified: state.modified, title: item.path };
+              // New tab keeps this comparison open; fall back to this tab if the browser blocks it
+              if (!canHandoff() || !openWithPayload('/compare', pair)) navigate('/compare', { state: pair });
+            }}
+            title="Open this pair in Text Compare (new tab)"
           >
             <ExternalLink size={14} /><span className="hide-mobile-text">Open in Text Compare</span>
           </button>
@@ -185,7 +193,7 @@ const FileDiff = ({ item }) => {
       <div className="code-panel-body">
         {state.loading && <div className="empty-hint">Loading…</div>}
         {state.error && <div className="inline-error p-4"><AlertTriangle size={15} /> {state.error}</div>}
-        {state.tooLarge && <div className="empty-hint">These files are too large to diff here. Use “Open in Text Compare” on smaller files.</div>}
+        {state.tooLarge && <div className="empty-hint">These files are too large to diff here. Use “Open in Text Compare” to compare them in a new tab.</div>}
         {state.binary && (
           <div className="empty-hint">
             Binary file{item.status === 'modified' ? 's differ' : ''}.
@@ -232,6 +240,7 @@ const FolderCompare = () => {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(new Set());
   const [selected, setSelected] = useState(null);
+  const [isMaximized, setIsMaximized] = useMaximize();
   // Latest loaded sources; loads finish asynchronously, so state closures could be stale
   const sourcesRef = useRef({ left: null, right: null });
 
@@ -356,7 +365,7 @@ const FolderCompare = () => {
       )}
 
       {results && (
-        <>
+        <div className={`fc-results-wrap ${isMaximized ? 'is-maximized' : ''}`}>
           <div className="tool-toolbar mt-4">
             <div className="tool-toolbar-group">
               <span className="fc-pill fc-added">+{counts.added} added</span>
@@ -367,6 +376,14 @@ const FolderCompare = () => {
             <div className="tool-toolbar-group" style={{ width: 'auto' }}>
               <button className="btn btn-ghost btn-sm" onClick={() => runCompare(sourcesRef.current.left, sourcesRef.current.right)} title="Compare again"><RefreshCw size={15} /></button>
               <button className="btn btn-outline btn-sm" onClick={handleExport}><Download size={15} /> <span>CSV report</span></button>
+              <button
+                className={`btn btn-sm ${isMaximized ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setIsMaximized((v) => !v)}
+                title={isMaximized ? 'Exit full view (Esc)' : 'Full view'}
+              >
+                {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                <span className="hide-mobile-text">{isMaximized ? 'Exit full view' : 'Full view'}</span>
+              </button>
             </div>
           </div>
 
@@ -410,7 +427,7 @@ const FolderCompare = () => {
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

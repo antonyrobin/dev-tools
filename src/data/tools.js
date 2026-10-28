@@ -1,7 +1,7 @@
 import {
   FileText, FileJson, GitCompare, Zap, Cpu, Code, Search, QrCode, AlignJustify,
   ArrowLeftRight, Braces, ListTree, Binary, KeyRound, Fingerprint, Hash, Lock, Pilcrow,
-  Regex, CalendarClock, Clock, Palette, FolderGit2,
+  Regex, CalendarClock, Clock, Palette, FolderGit2, ScanLine,
 } from 'lucide-react';
 
 // Tool groups, in display order (navbar menu, home filter chips, footer)
@@ -150,6 +150,15 @@ export const TOOLS = [
     icon: AlignJustify,
     color: '#a855f7',
     category: 'generate',
+  },
+  {
+    path: '/scanner',
+    name: 'Scanner',
+    title: 'QR & Barcode Scanner',
+    description: 'Read QR codes and barcodes from images, screenshots or your camera, decoded locally.',
+    icon: ScanLine,
+    color: '#0ea5e9',
+    category: 'utility',
   },
   {
     path: '/regex',

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import ToolHeader from '../components/ToolHeader';
 import FindBar from '../components/FindBar';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { FileJson, Play, Copy, Check, Maximize2, Minimize2, RotateCcw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, WrapText, Download, Trash2, AlertTriangle } from 'lucide-react';
+import { FileJson, Play, Copy, Check, Maximize2, Minimize2, RotateCcw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, WrapText, Download, Trash2, AlertTriangle, Wand2, CheckCircle2 } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
 import prettierPluginEstree from 'prettier/plugins/estree';
@@ -15,42 +15,9 @@ import usePageTitle from '../hooks/usePageTitle';
 import useMaximize from '../hooks/useMaximize';
 import { buildSearchRegex, scanLine, highlightHtmlRanges, MAX_MATCHES } from '../utils/textSearch';
 
-// Import Prism core and themes
-import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
-
-// Import language components statically for Cloudflare production bundle safety
-import 'prismjs/components/prism-markup';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-clike';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-java';
-import 'prismjs/components/prism-csharp';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-sql';
-import 'prismjs/components/prism-markup-templating';
-import 'prismjs/components/prism-php';
-import 'prismjs/components/prism-c';
-import 'prismjs/components/prism-cpp';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/components/prism-markdown';
-
-const languagePrismMap = {
-  json: 'json',
-  javascript: 'javascript',
-  html: 'markup',
-  css: 'css',
-  java: 'java',
-  csharp: 'csharp',
-  python: 'python',
-  sql: 'sql',
-  php: 'php',
-  c: 'c',
-  cpp: 'cpp',
-  yaml: 'yaml',
-  markdown: 'markdown',
-};
+import { highlightToLines, plainLines, languagePrismMap } from '../utils/highlight';
+import { SYNTAX_FIXERS } from '../utils/syntaxFix';
 
 const defaultSampleCode = {
   json: '{\n  "name": "DevTools",\n  "version": "1.0.0",\n  "features": ["Formatter", "Compiler", "Compare"],\n  "status": true\n}',
@@ -133,53 +100,27 @@ function getFoldableRanges(code, language) {
   return foldRanges;
 }
 
-/**
- * Splits Prism syntax-highlighted HTML string into individual line HTML strings,
- * properly closing and re-opening open HTML span tags across newline boundaries.
- */
-function splitPrismHtmlIntoLines(html) {
-  if (!html) return [];
-  const lines = [];
-  let currentLine = '';
-  const openTags = [];
-
-  let i = 0;
-  while (i < html.length) {
-    if (html[i] === '\n') {
-      let closedTags = '';
-      for (let t = openTags.length - 1; t >= 0; t--) {
-        closedTags += '</span>';
-      }
-      lines.push(currentLine + closedTags);
-
-      let reopenedTags = '';
-      for (let t = 0; t < openTags.length; t++) {
-        reopenedTags += openTags[t];
-      }
-      currentLine = reopenedTags;
-      i++;
-    } else if (html[i] === '<') {
-      const tagEnd = html.indexOf('>', i);
-      if (tagEnd !== -1) {
-        const tag = html.substring(i, tagEnd + 1);
-        if (tag.startsWith('</')) {
-          openTags.pop();
-        } else if (!tag.endsWith('/>') && !tag.startsWith('<?')) {
-          openTags.push(tag);
-        }
-        currentLine += tag;
-        i = tagEnd + 1;
-      } else {
-        currentLine += html[i];
-        i++;
-      }
-    } else {
-      currentLine += html[i];
-      i++;
-    }
+/** Widest line in columns (tabs expanded), so the virtualized list can size its horizontal scroll. */
+function getMaxColumns(code) {
+  let max = 0;
+  let col = 0;
+  for (let i = 0; i < code.length; i++) {
+    const c = code.charCodeAt(i);
+    if (c === 10) { if (col > max) max = col; col = 0; }
+    else col += c === 9 ? 8 - (col % 8) : 1;
   }
-  lines.push(currentLine);
-  return lines;
+  return Math.max(max, col);
+}
+
+/** Index of the first item in a sorted array that is >= value. */
+function lowerBound(arr, value) {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] < value) lo = mid + 1; else hi = mid;
+  }
+  return lo;
 }
 
 /**
@@ -220,26 +161,169 @@ const CodeLineRow = React.memo(({ lineHtml, lineIdx, hasFold, isCollapsed, colla
   );
 });
 
-/** The whole line list; memoized so parent updates (e.g. match counter) skip it. */
-const CodeLines = React.memo(({ visibleLines, highlightedLines, foldRanges, collapsedFolds, rangesByLine, toggleFold, className }) => (
-  <div className={className}>
-    {visibleLines.map((lineIdx) => {
-      const foldEnd = foldRanges[lineIdx];
-      return (
-        <CodeLineRow
-          key={lineIdx}
-          lineHtml={highlightedLines[lineIdx]}
-          lineIdx={lineIdx}
-          hasFold={foldEnd !== undefined}
-          isCollapsed={Boolean(collapsedFolds[lineIdx])}
-          collapsedCount={foldEnd ? foldEnd - lineIdx : 0}
-          ranges={rangesByLine.get(lineIdx)}
-          toggleFold={toggleFold}
-        />
-      );
-    })}
-  </div>
-));
+const OVERSCAN_ROWS = 40;
+const VIEW_PAD_TOP = 8; // .code-view-scroll top padding (0.5rem)
+
+/**
+ * Virtualized line list: only the rows around the viewport are in the DOM, so a 50k-line
+ * file renders as fast as a 50-line one. Row heights are fixed without wrapping; with
+ * wrapping, rendered rows are measured and cached so offsets stay accurate.
+ * Also owns scrolling to and marking the active search match, since only it knows
+ * where off-screen rows are.
+ */
+const VirtualCodeLines = React.memo(({
+  scrollRef, visibleLines, highlightedLines, foldRanges, collapsedFolds, rangesByLine,
+  toggleFold, className, wrap, maxColumns, activeMatch,
+}) => {
+  const [viewport, setViewport] = useState({ top: 0, height: 800, width: 0 });
+  const [rowHeight, setRowHeight] = useState(20);
+  const [measureVersion, setMeasureVersion] = useState(0);
+  const innerRef = useRef(null);
+  const scrolledMatchRef = useRef(null);
+  const pendingHScrollRef = useRef(false);
+
+  // Measured heights of wrapped rows; a fresh cache whenever wrapping could change
+  const wrapWidth = wrap ? viewport.width : 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const heights = useMemo(() => new Map(), [highlightedLines, wrap, wrapWidth]);
+
+  const offsets = useMemo(() => {
+    const out = new Float64Array(visibleLines.length + 1);
+    for (let i = 0; i < visibleLines.length; i++) {
+      out[i + 1] = out[i] + (heights.get(visibleLines[i]) ?? rowHeight);
+    }
+    return out;
+    // measureVersion: heights is mutated in place by measurement
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleLines, heights, rowHeight, measureVersion]);
+
+  const readViewport = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewport((v) => (v.top === el.scrollTop && v.height === el.clientHeight && v.width === el.clientWidth
+      ? v
+      : { top: el.scrollTop, height: el.clientHeight, width: el.clientWidth }));
+  }, [scrollRef]);
+
+  // A passive effect on purpose: the parent's scrollRef is attached only after child layout effects run
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    readViewport();
+    el.addEventListener('scroll', readViewport, { passive: true });
+    const ro = new ResizeObserver(readViewport);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', readViewport);
+      ro.disconnect();
+    };
+  }, [scrollRef, readViewport]);
+
+  const count = visibleLines.length;
+  const top = Math.max(0, viewport.top - VIEW_PAD_TOP);
+  const first = Math.max(0, lowerBound(offsets, top + 0.5) - 1);
+  const start = Math.max(0, first - OVERSCAN_ROWS);
+  const end = Math.min(count, lowerBound(offsets, top + viewport.height) + OVERSCAN_ROWS);
+
+  // Measure what was rendered: the base row height, plus every row while wrapping
+  useLayoutEffect(() => {
+    const inner = innerRef.current;
+    if (!inner || !inner.children.length) return;
+    if (!wrap) {
+      const h = inner.children[0].offsetHeight;
+      if (h && h !== rowHeight) setRowHeight(h);
+      return;
+    }
+    let shiftAbove = 0;
+    let changed = false;
+    for (const row of inner.children) {
+      const lineIdx = Number(row.dataset.line);
+      const h = row.offsetHeight;
+      const prev = heights.get(lineIdx) ?? rowHeight;
+      if (h !== prev) {
+        heights.set(lineIdx, h);
+        changed = true;
+        if (lowerBound(visibleLines, lineIdx) < first) shiftAbove += h - prev;
+      }
+    }
+    if (changed) {
+      // Keep the rows being read in place when rows above them get re-measured
+      if (shiftAbove && scrollRef.current) scrollRef.current.scrollTop += shiftAbove;
+      setMeasureVersion((v) => v + 1);
+    }
+  }, [wrap, rowHeight, heights, visibleLines, first, start, end, scrollRef, highlightedLines, collapsedFolds]);
+
+  // Bring the active match into view (vertically) once per match
+  useLayoutEffect(() => {
+    if (!activeMatch) { scrolledMatchRef.current = null; return; }
+    if (scrolledMatchRef.current === activeMatch) return;
+    const pos = lowerBound(visibleLines, activeMatch.lineIdx);
+    // Hidden inside a collapsed fold: the parent expands it and this runs again
+    if (visibleLines[pos] !== activeMatch.lineIdx) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    scrolledMatchRef.current = activeMatch;
+    pendingHScrollRef.current = true;
+    const h = offsets[pos + 1] - offsets[pos];
+    el.scrollTop = offsets[pos] + VIEW_PAD_TOP - el.clientHeight / 2 + h / 2;
+    readViewport();
+  }, [activeMatch, visibleLines, offsets, scrollRef, readViewport]);
+
+  // Mark the active match directly in the DOM (rows are memoized, so this is cheap to redo)
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.querySelectorAll('.search-match-active').forEach((el) => el.classList.remove('search-match-active'));
+    container.querySelectorAll('.has-active-match').forEach((el) => el.classList.remove('has-active-match'));
+    if (!activeMatch) return;
+    const mark = container.querySelector(`mark[data-match-idx="${activeMatch.idx}"]`);
+    if (!mark) return;
+    mark.classList.add('search-match-active');
+    mark.closest('.code-line-row')?.classList.add('has-active-match');
+    if (pendingHScrollRef.current) {
+      pendingHScrollRef.current = false;
+      if (!wrap) {
+        const gutter = 80;
+        const left = mark.offsetLeft;
+        if (left < container.scrollLeft + gutter || left + mark.offsetWidth > container.scrollLeft + container.clientWidth - 24) {
+          container.scrollLeft = Math.max(0, left - container.clientWidth / 2);
+        }
+      }
+    }
+  });
+
+  const rows = [];
+  for (let i = start; i < end; i++) {
+    const lineIdx = visibleLines[i];
+    const foldEnd = foldRanges[lineIdx];
+    rows.push(
+      <CodeLineRow
+        key={lineIdx}
+        lineHtml={highlightedLines[lineIdx]}
+        lineIdx={lineIdx}
+        hasFold={foldEnd !== undefined}
+        isCollapsed={Boolean(collapsedFolds[lineIdx])}
+        collapsedCount={foldEnd ? foldEnd - lineIdx : 0}
+        ranges={rangesByLine.get(lineIdx)}
+        toggleFold={toggleFold}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={className}
+      style={{
+        height: offsets[count],
+        minWidth: wrap ? undefined : `max(100%, calc(74px + 1.5rem + ${maxColumns}ch))`,
+      }}
+    >
+      <div ref={innerRef} style={{ transform: `translateY(${offsets[start]}px)` }}>
+        {rows}
+      </div>
+    </div>
+  );
+});
 
 const INDENT_OPTIONS = [
   { value: '2', label: '2 spaces' },
@@ -317,6 +401,50 @@ const pythonFormatter = (code) => {
     .trim();
 };
 
+const WORKER_HIGHLIGHT_CHARS = 100000;
+
+/**
+ * Per-line highlighted HTML. Small inputs are highlighted synchronously; large ones show
+ * plain text at once and swap in Prism's output from a worker, so the page never freezes.
+ */
+function useHighlightedLines(code, language) {
+  const offThread = code.length >= WORKER_HIGHLIGHT_CHARS && typeof Worker !== 'undefined';
+  const syncLines = useMemo(
+    () => (offThread ? plainLines(code) : highlightToLines(code, language)),
+    [code, language, offThread]
+  );
+  const [workerResult, setWorkerResult] = useState(null);
+  const workerRef = useRef(null);
+  const seqRef = useRef(0);
+
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
+  useEffect(() => {
+    if (!offThread) return;
+    if (!workerRef.current) {
+      try {
+        workerRef.current = new Worker(new URL('../utils/highlight.worker.js', import.meta.url), { type: 'module' });
+      } catch {
+        return;
+      }
+    }
+    const worker = workerRef.current;
+    const id = ++seqRef.current;
+    const onMessage = (e) => {
+      if (e.data.id !== id) return;
+      worker.removeEventListener('message', onMessage);
+      if (e.data.lines) setWorkerResult({ code, language, lines: e.data.lines });
+    };
+    worker.addEventListener('message', onMessage);
+    worker.postMessage({ id, code, language });
+    return () => worker.removeEventListener('message', onMessage);
+  }, [code, language, offThread]);
+
+  return offThread && workerResult?.code === code && workerResult.language === language
+    ? workerResult.lines
+    : syncLines;
+}
+
 const CodeFormatter = () => {
   usePageTitle('Code Formatter');
   const [language, setLanguage] = useState('json');
@@ -345,13 +473,10 @@ const CodeFormatter = () => {
   const activeCode = formattedCode || inputCode;
 
   const foldRanges = useMemo(() => getFoldableRanges(activeCode, language), [activeCode, language]);
+  const maxColumns = useMemo(() => getMaxColumns(activeCode), [activeCode]);
 
-  // Syntax highlight once per code change, then split into per-line HTML
-  const highlightedLines = useMemo(() => {
-    const prismLang = languagePrismMap[language] || 'javascript';
-    const grammar = Prism.languages[prismLang] || Prism.languages.javascript;
-    return splitPrismHtmlIntoLines(Prism.highlight(activeCode, grammar, prismLang));
-  }, [activeCode, language]);
+  // Syntax highlight once per code change, split into per-line HTML (off-thread for big files)
+  const highlightedLines = useHighlightedLines(activeCode, language);
 
   // Line indices that are currently visible (collapsed ranges are skipped in one jump)
   const visibleLines = useMemo(() => {
@@ -409,31 +534,6 @@ const CodeFormatter = () => {
     }
   }, [activeMatch, collapsedFolds, foldRanges]);
 
-  // Mark the active match directly in the DOM and scroll the viewer (not the page) to it.
-  // Re-runs when the rendered lines change so the highlight survives re-renders.
-  useLayoutEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    container.querySelectorAll('.search-match-active').forEach((el) => el.classList.remove('search-match-active'));
-    container.querySelectorAll('.has-active-match').forEach((el) => el.classList.remove('has-active-match'));
-    if (!activeMatch) return;
-
-    const mark = container.querySelector(`mark[data-match-idx="${activeMatch.idx}"]`);
-    if (!mark) return;
-    mark.classList.add('search-match-active');
-    const row = mark.closest('.code-line-row');
-    row.classList.add('has-active-match');
-
-    container.scrollTop = row.offsetTop - container.clientHeight / 2 + row.offsetHeight / 2;
-    if (!wrapLines) {
-      const gutter = 80;
-      const left = mark.offsetLeft;
-      if (left < container.scrollLeft + gutter || left + mark.offsetWidth > container.scrollLeft + container.clientWidth - 24) {
-        container.scrollLeft = Math.max(0, left - container.clientWidth / 2);
-      }
-    }
-  }, [activeMatch, rangesByLine, visibleLines, wrapLines]);
-
   const toggleFold = useCallback((startLine) => {
     setCollapsedFolds((prev) => ({ ...prev, [startLine]: !prev[startLine] }));
   }, []);
@@ -485,28 +585,28 @@ const CodeFormatter = () => {
     }
   };
 
-  const handleFormat = async () => {
+  const handleFormat = async (source = inputCode) => {
     setError(null);
     setCollapsedFolds({});
-    if (!inputCode.trim()) {
+    if (!source.trim()) {
       setFormattedCode('');
-      return;
+      return true;
     }
 
     const unit = indent === 'tab' ? '\t' : ' '.repeat(Number(indent));
     setIsFormatting(true);
     try {
-      let result = inputCode;
+      let result = source;
 
       if (language === 'json') {
-        result = JSON.stringify(JSON.parse(inputCode), null, unit);
+        result = JSON.stringify(JSON.parse(source), null, unit);
       } else if (['java', 'c', 'cpp', 'csharp', 'php'].includes(language)) {
-        result = basicIndenter(inputCode, unit);
+        result = basicIndenter(source, unit);
       } else if (language === 'sql') {
         try {
           // Loaded on demand: the dialect grammars are only needed for SQL
           const { format: formatSql } = await import('sql-formatter');
-          result = formatSql(inputCode, {
+          result = formatSql(source, {
             language: sqlDialect,
             tabWidth: indent === 'tab' ? 2 : Number(indent),
             useTabs: indent === 'tab',
@@ -518,11 +618,11 @@ const CodeFormatter = () => {
           throw new Error(sqlErr.message?.split('\n').slice(0, 2).join(' ') || 'could not parse the query');
         }
       } else if (language === 'python') {
-        result = pythonFormatter(inputCode);
+        result = pythonFormatter(source);
       } else {
         const parserMap = { javascript: 'babel', html: 'html', css: 'css', yaml: 'yaml', markdown: 'markdown' };
         try {
-          result = await prettier.format(inputCode, {
+          result = await prettier.format(source, {
             parser: parserMap[language] || 'babel',
             plugins: [prettierPluginBabel, prettierPluginEstree, prettierPluginHtml, prettierPluginPostcss, prettierPluginMarkdown, prettierPluginYaml],
             singleQuote: true,
@@ -533,16 +633,45 @@ const CodeFormatter = () => {
         } catch (prettierErr) {
           console.warn('Prettier error, using basic indenter fallback:', prettierErr);
           setError({ type: 'warning', text: `Syntax warning: basic formatting applied. ${prettierErr.message?.split('\n')[0] || ''}` });
-          result = basicIndenter(inputCode, unit);
+          result = basicIndenter(source, unit);
         }
       }
 
       setFormattedCode(result.replace(/\n$/, ''));
+      return true;
     } catch (err) {
-      setError({ type: 'error', text: `Invalid ${language.toUpperCase()}: ${err.message || 'please check for syntax errors.'}` });
+      setError({
+        type: 'error',
+        text: `Invalid ${language.toUpperCase()}: ${err.message || 'please check for syntax errors.'}`,
+        canFix: Boolean(SYNTAX_FIXERS[language]),
+      });
+      return false;
     } finally {
       setIsFormatting(false);
     }
+  };
+
+
+  // Repairs common syntax mistakes (unquoted keys, trailing commas, unclosed tags…), then formats
+  const handleFixSyntax = async () => {
+    const fixer = SYNTAX_FIXERS[language];
+    if (!fixer || !inputCode.trim()) return;
+    let repaired;
+    try {
+      repaired = fixer(inputCode, indent === 'tab' ? '\t' : Number(indent));
+    } catch (err) {
+      setError({ type: 'error', text: `Could not repair this ${language.toUpperCase()}: ${err.message}` });
+      return;
+    }
+    setInputCode(repaired.text);
+    const ok = await handleFormat(repaired.text);
+    if (!ok) return;
+    setError({
+      type: 'success',
+      text: repaired.fixes.length
+        ? `Fixed: ${repaired.fixes.join(', ')}.`
+        : `Already valid ${language.toUpperCase()}; nothing to fix.`,
+    });
   };
 
   const handleCopy = () => {
@@ -649,16 +778,34 @@ const CodeFormatter = () => {
           </button>
         </div>
 
-        <button className="btn btn-primary" onClick={handleFormat} disabled={!inputCode || isFormatting} title="Format (Ctrl+Enter)">
-          <Play size={16} />
-          <span>{isFormatting ? 'Formatting…' : 'Format Code'}</span>
-        </button>
+        <div className="tool-toolbar-group" style={{ width: 'auto' }}>
+          {SYNTAX_FIXERS[language] && (
+            <button
+              className="btn btn-outline"
+              onClick={handleFixSyntax}
+              disabled={!inputCode || isFormatting}
+              title="Repair common mistakes: unquoted keys, single quotes, trailing or missing commas, comments, unclosed brackets or tags"
+            >
+              <Wand2 size={16} />
+              <span>Fix syntax</span>
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => handleFormat()} disabled={!inputCode || isFormatting} title="Format (Ctrl+Enter)">
+            <Play size={16} />
+            <span>{isFormatting ? 'Formatting…' : 'Format Code'}</span>
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className={`alert alert-${error.type}`}>
-          <AlertTriangle size={16} />
+          {error.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
           <span>{error.text}</span>
+          {error.canFix && (
+            <button className="btn btn-outline btn-xs" onClick={handleFixSyntax}>
+              <Wand2 size={13} /> Fix syntax
+            </button>
+          )}
           <button className="alert-close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
         </div>
       )}
@@ -677,6 +824,7 @@ const CodeFormatter = () => {
               onFileLoaded={(res) => { if (res.detectedLanguage) setLanguage(res.detectedLanguage); }}
               placeholder="Paste or drag & drop code file here..."
               lineNumbers
+              largeInputPreview
             />
           </div>
           <div className="code-panel-footer">
@@ -733,8 +881,12 @@ const CodeFormatter = () => {
           <div className="code-panel-body">
             <div ref={scrollRef} className={`code-view-scroll ${wrapLines ? 'wrap' : ''}`} tabIndex={0}>
               {activeCode ? (
-                <CodeLines
+                <VirtualCodeLines
+                  scrollRef={scrollRef}
                   className={`code-view-lines language-${languagePrismMap[language] || 'javascript'}`}
+                  wrap={wrapLines}
+                  maxColumns={maxColumns}
+                  activeMatch={activeMatch}
                   visibleLines={visibleLines}
                   highlightedLines={highlightedLines}
                   foldRanges={foldRanges}

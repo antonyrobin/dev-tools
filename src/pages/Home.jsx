@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, Search, Lock, Gauge } from 'lucide-react';
-import { Turnstile } from '@marsidev/react-turnstile';
 import usePageTitle from '../hooks/usePageTitle';
 import { TOOLS, CATEGORIES as TOOL_CATEGORIES } from '../data/tools';
+import { prefetchRoute } from '../data/routeLoaders';
 import './Home.css';
 
 const CATEGORIES = [{ id: 'all', label: 'All tools' }, ...TOOL_CATEGORIES];
@@ -13,6 +13,35 @@ const HIGHLIGHTS = [
   { icon: Gauge, title: 'Built for big files', text: 'Fast find, folding and diffing that stay smooth on thousands of lines.' },
   { icon: ShieldCheck, title: 'Free & open source', text: 'No sign-up, no tracking walls. Inspect and contribute on GitHub.' },
 ];
+
+// Turnstile injects a third-party script and iframe; load it only once its card is near the viewport
+// so returning to the home page doesn't block on it.
+const Turnstile = lazy(() => import('@marsidev/react-turnstile').then((m) => ({ default: m.Turnstile })));
+
+const LazyTurnstile = () => {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || visible) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+
+  return (
+    <div ref={ref} className="turnstile-container">
+      {visible && (
+        <Suspense fallback={null}>
+          <Turnstile siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'} />
+        </Suspense>
+      )}
+    </div>
+  );
+};
 
 const Home = () => {
   usePageTitle('Home');
@@ -76,7 +105,14 @@ const Home = () => {
 
         <div className="features-grid">
           {visibleTools.map((tool) => (
-            <Link to={tool.path} key={tool.path} className="feature-card glass-card">
+            <Link
+              to={tool.path}
+              key={tool.path}
+              className="feature-card glass-card"
+              onMouseEnter={() => prefetchRoute(tool.path)}
+              onFocus={() => prefetchRoute(tool.path)}
+              onTouchStart={() => prefetchRoute(tool.path)}
+            >
               <div className="feature-icon" style={{ background: `${tool.color}22`, color: tool.color }}>
                 <tool.icon size={22} />
               </div>
@@ -114,9 +150,7 @@ const Home = () => {
             <h3>Enterprise Grade Security</h3>
             <p className="mb-0">Protected by Cloudflare Turnstile bot management. Advanced privacy checks embedded.</p>
           </div>
-          <div className="turnstile-container">
-            <Turnstile siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'} />
-          </div>
+          <LazyTurnstile />
         </div>
       </section>
     </div>
