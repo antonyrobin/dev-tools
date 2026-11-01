@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import ToolHeader from '../components/ToolHeader';
 import FindBar from '../components/FindBar';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
-import { FileJson, Play, Copy, Check, Maximize2, Minimize2, RotateCcw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, WrapText, Download, Trash2, AlertTriangle, Wand2, CheckCircle2 } from 'lucide-react';
+import { FileJson, Play, Copy, Check, RotateCcw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, WrapText, Download, Trash2, AlertTriangle, Wand2, CheckCircle2 } from 'lucide-react';
 import * as prettier from 'prettier/standalone';
 import prettierPluginBabel from 'prettier/plugins/babel';
 import prettierPluginEstree from 'prettier/plugins/estree';
@@ -12,6 +12,7 @@ import prettierPluginMarkdown from 'prettier/plugins/markdown';
 import prettierPluginYaml from 'prettier/plugins/yaml';
 import ShareHistory from '../components/ShareHistory';
 import useMaximize from '../hooks/useMaximize';
+import MaximizeButton from '../components/MaximizeButton';
 import { buildSearchRegex, scanLine, highlightHtmlRanges, MAX_MATCHES } from '../utils/textSearch';
 
 import 'prismjs/themes/prism-tomorrow.css';
@@ -810,10 +811,13 @@ const CodeFormatter = () => {
 
       <div className="editor-split">
         {/* Left: Input */}
-        <div className="code-panel">
+        <div className={`code-panel ${isMaximized === 'input' ? 'is-maximized' : ''}`}>
           <div className="code-panel-header">
             <span className="code-panel-title">Input <span className="badge-lang">{language.toUpperCase()}</span></span>
-            <span className="text-xs text-muted">Drop a file or paste code</span>
+            <div className="code-panel-actions">
+              <span className="text-xs text-muted hide-mobile-text">Drop a file or paste code</span>
+              <MaximizeButton active={isMaximized === 'input'} onToggle={() => setIsMaximized((v) => (v === 'input' ? false : 'input'))} />
+            </div>
           </div>
           <div className="code-panel-body">
             <CodeDropzoneTextarea
@@ -832,7 +836,7 @@ const CodeFormatter = () => {
         </div>
 
         {/* Right: Formatted & highlighted output with find + folding */}
-        <div className={`code-panel ${isMaximized ? 'is-maximized' : ''}`} onKeyDown={handlePanelKeyDown}>
+        <div className={`code-panel ${isMaximized === 'output' ? 'is-maximized' : ''}`} onKeyDown={handlePanelKeyDown}>
           <div className="code-panel-header">
             <span className="code-panel-title">
               Output <span className="badge-lang">{language.toUpperCase()}</span>
@@ -870,9 +874,7 @@ const CodeFormatter = () => {
               <button className="btn btn-ghost btn-xs" onClick={handleDownload} disabled={!activeCode} title="Download output">
                 <Download size={15} />
               </button>
-              <button className="btn btn-ghost btn-xs" onClick={() => setIsMaximized(v => !v)} title={isMaximized ? 'Exit full screen (Esc)' : 'Full screen'}>
-                {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-              </button>
+              <MaximizeButton active={isMaximized === 'output'} onToggle={() => setIsMaximized((v) => (v === 'output' ? false : 'output'))} />
             </div>
           </div>
 

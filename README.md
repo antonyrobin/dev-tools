@@ -93,7 +93,7 @@ The application modules comprise several powerful utilities out of the box:
 A robust formatting tool that integrates natively with Prettier to parse and format code (e.g., JavaScript, JSON, CSS) beautifully. It maintains team consistency and maximizes syntax readability.
 
 ### 2. 💻 Code Compiler
-An interface dedicated to scaffolding, compiling, or executing targeted coding languages immediately inside the browser to test behavioral outcomes without complex local container setups.
+Write, compile and run code in 30 languages (Python, Java, C, C++, C#, Go, Rust, TypeScript, PHP, Ruby, Swift, Scala, Haskell, SQL, Bash and more) with program input (stdin), compiler versions and extra flags. JavaScript runs locally in a Web Worker (stoppable) and HTML/CSS/JS renders in a sandboxed live preview; every other language is compiled and run by the free [Wandbox](https://wandbox.org) service, so that code is sent to wandbox.org.
 
 ### 3. 🗜️ Code Minifier
 Allows developers to stringently compress code strings by stripping unnecessary whitespace, comments, and line breaks. It drastically trims down file size dimensions, making front-end assets optimal for production caching.
@@ -127,7 +127,15 @@ UUID v4/v7 (with an inspector), MD5/SHA-1/SHA-256/SHA-384/SHA-512 hashes and HMA
 ### 12. 🧰 Utilities
 A regex tester with live match highlighting, capture groups and replace preview (patterns run in a worker, so catastrophic backtracking is stopped instead of freezing the page), a cron explainer with upcoming run times, a timestamp converter with time zones, and a colour converter with WCAG contrast checks.
 
-### 13. 🗄️ SQL Formatting
+### 13. 🖼️ Image Tools
+All processed locally in the browser:
+- **Image Compressor**: bulk JPEG/PNG/WebP/AVIF compression with a quality slider, max dimensions, before/after preview and ZIP download.
+- **Image Converter**: PNG, JPEG, WebP, AVIF (where the browser can encode it), BMP and ICO output; reads GIF, SVG and ICO too.
+- **Image Resizer**: resize by pixels or percent, crop to common aspect ratios, rotate, flip and social-media presets.
+- **Image ↔ Base64**: data URIs with HTML, CSS and Markdown snippets, and base64 back to an image.
+- **Favicon Generator**: favicon.ico, PNG favicons, Apple touch and Android icons, `site.webmanifest` and the `<head>` tags.
+
+### 14. 🗄️ SQL Formatting
 The Code Formatter uses [`sql-formatter`](https://github.com/sql-formatter-org/sql-formatter) with 13 dialects (PostgreSQL, MySQL, T-SQL, PL/SQL, BigQuery, Snowflake and more) and a keyword-case option.
 
 ---

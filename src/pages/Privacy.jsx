@@ -18,6 +18,9 @@ const Privacy = () => {
           <p className="mb-6">
             DevTools is a client-side execution environment. We do not store, log, or transmit your code snippets, generated QR codes, or barcodes to our servers. All operations happen directly in your browser.
           </p>
+          <p className="mb-6">
+            One exception: in the Code Compiler, languages other than JavaScript and HTML are compiled and run by the free Wandbox service (wandbox.org). When you press Run for those languages, your code and any program input are sent to Wandbox. JavaScript and HTML always run locally.
+          </p>
 
           <h2 className="text-xl mb-4 text-primary">2. Bot Protection & Cloudflare</h2>
           <p className="mb-6">
