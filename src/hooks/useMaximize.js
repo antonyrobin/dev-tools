@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 /**
  * Toggles a panel between inline and full-viewport mode.
  * Locks page scroll while maximized and exits on Escape (unless a child handled it).
+ * Pages with several panels can store a panel id instead of `true`.
  */
 export default function useMaximize() {
   const [isMaximized, setIsMaximized] = useState(false);

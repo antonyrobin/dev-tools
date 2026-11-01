@@ -3,6 +3,8 @@ import ToolHeader from '../components/ToolHeader';
 import CodeDropzoneTextarea, { UploadButton } from '../components/CodeDropzoneTextarea';
 import { Zap, Copy, Check, Download, Trash2, AlertTriangle } from 'lucide-react';
 import { minifyCode } from '../utils/minify';
+import MaximizeButton from '../components/MaximizeButton';
+import useMaximize from '../hooks/useMaximize';
 
 const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript', ext: 'min.js' },
@@ -22,6 +24,9 @@ const CodeMinifier = () => {
   const [outputCode, setOutputCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
+  const [maxPanel, setMaxPanel] = useMaximize();
+
+  const togglePanel = (id) => setMaxPanel((v) => (v === id ? false : id));
 
   const handleMinify = () => {
     setError(null);
@@ -93,9 +98,10 @@ const CodeMinifier = () => {
       )}
 
       <div className="editor-split">
-        <div className="code-panel">
+        <div className={`code-panel ${maxPanel === 'input' ? 'is-maximized' : ''}`}>
           <div className="code-panel-header">
             <span className="code-panel-title">Original</span>
+            <MaximizeButton active={maxPanel === 'input'} onToggle={() => togglePanel('input')} />
           </div>
           <div className="code-panel-body">
             <CodeDropzoneTextarea
@@ -112,7 +118,7 @@ const CodeMinifier = () => {
           </div>
         </div>
 
-        <div className="code-panel">
+        <div className={`code-panel ${maxPanel === 'output' ? 'is-maximized' : ''}`}>
           <div className="code-panel-header">
             <span className="code-panel-title">
               Minified
@@ -125,6 +131,7 @@ const CodeMinifier = () => {
               <button className="btn btn-ghost btn-xs" onClick={handleDownload} disabled={!outputCode} title="Download">
                 <Download size={15} />
               </button>
+              <MaximizeButton active={maxPanel === 'output'} onToggle={() => togglePanel('output')} />
             </div>
           </div>
           <div className="code-panel-body">

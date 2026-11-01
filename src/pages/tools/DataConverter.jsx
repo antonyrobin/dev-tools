@@ -2,6 +2,8 @@ import React, { useState, useMemo, useDeferredValue } from 'react';
 import { ArrowLeftRight, ArrowRightLeft, Download, Trash2, Sparkles, AlertTriangle, Wand2 } from 'lucide-react';
 import ToolHeader from '../../components/ToolHeader';
 import ShareHistory from '../../components/ShareHistory';
+import MaximizeButton from '../../components/MaximizeButton';
+import useMaximize from '../../hooks/useMaximize';
 import CopyButton from '../../components/CopyButton';
 import CodeDropzoneTextarea, { UploadButton } from '../../components/CodeDropzoneTextarea';
 import { DATA_FORMATS, detectFormat, parseData, serializeData } from '../../utils/dataFormats';
@@ -63,6 +65,7 @@ const DataConverter = () => {
   const [delimiter, setDelimiter] = useState('auto');
   const [nestCsv, setNestCsv] = useState(true);
   const [rootName, setRootName] = useState('root');
+  const [maxPanel, setMaxPanel] = useMaximize();
 
   const deferredInput = useDeferredValue(input);
 
@@ -188,7 +191,7 @@ const DataConverter = () => {
       )}
 
       <div className="editor-split">
-        <div className="code-panel">
+        <div className={`code-panel ${maxPanel === 'input' ? 'is-maximized' : ''}`}>
           <div className="code-panel-header">
             <span className="code-panel-title">Input <span className="badge-lang">{from.toUpperCase()}</span></span>
             <div className="code-panel-actions">
@@ -207,6 +210,7 @@ const DataConverter = () => {
               <button className="btn btn-ghost btn-xs btn-danger-ghost" onClick={() => setInput('')} disabled={!input} title="Clear">
                 <Trash2 size={14} />
               </button>
+              <MaximizeButton active={maxPanel === 'input'} onToggle={() => setMaxPanel((v) => (v === 'input' ? false : 'input'))} />
             </div>
           </div>
           <div className="code-panel-body">
@@ -218,7 +222,7 @@ const DataConverter = () => {
           </div>
         </div>
 
-        <div className="code-panel">
+        <div className={`code-panel ${maxPanel === 'output' ? 'is-maximized' : ''}`}>
           <div className="code-panel-header">
             <span className="code-panel-title">Output <span className="badge-lang">{to.toUpperCase()}</span></span>
             <div className="code-panel-actions">
@@ -226,6 +230,7 @@ const DataConverter = () => {
               <button className="btn btn-ghost btn-xs" onClick={handleDownload} disabled={!output} title={`Download .${extFor(to)}`}>
                 <Download size={14} />
               </button>
+              <MaximizeButton active={maxPanel === 'output'} onToggle={() => setMaxPanel((v) => (v === 'output' ? false : 'output'))} />
             </div>
           </div>
           <div className="code-panel-body">
